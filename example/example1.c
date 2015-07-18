@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include <float.h>
 #include <GLFW/glfw3.h>
 #pragma comment(lib, "glfw3.lib")
@@ -10,7 +11,61 @@
 #define CDEC2D_IMPLEMENTATION
 #include "cdec2d.h"
 
-void drawframe(GLFWwindow* window)
+// ortho proj
+const double viewbounds[]={-50, 50, -50, 50, -1, 1};
+
+// original polygon to be decomposed
+float g_polygon[]={ 
+  -10.0f,20.0f,  // 0
+  0.0f, 10.0f,   // 1
+  10.0f, 20.0f,  // 2
+  20.0f, -5.0f,  // 3
+  5.0f, 0.0f,    // 4
+  -5.0f, -40.0f,  // 5
+  -5.0f, -10.0f, // 6
+  -20.0f, -15.0f // 7
+};
+const int g_polycount= sizeof(g_polygon)/(sizeof(float)*2);
+
+// decomp result
+int** g_parts=0;
+int* g_psizes=0;
+int g_partscount=0;
+
+
+void drawPolygon(char fill, float* poly, int count, float x, float y)
+{
+  int i;
+
+  glLineWidth(2.0f);
+  glPointSize(5.0f);
+
+  glPushMatrix();
+  glTranslatef(x,y,0.0f);
+  glColor4ub(255,0,0,255);
+  if ( fill )
+  {
+    glBegin(GL_TRIANGLE_FAN);
+    for ( i = 0; i < count; ++i )
+      glVertex2f(g_polygon[i*2], g_polygon[i*2+1]);
+    glEnd();
+  }
+
+  glColor4ub(255,255,255,255);
+  glBegin(GL_LINE_LOOP);
+  for ( i = 0; i < count; ++i )
+    glVertex2f(g_polygon[i*2], g_polygon[i*2+1]);
+  glEnd();
+
+  glColor4ub(255,255,0,255);
+  glBegin(GL_POINTS);
+  for ( i = 0; i < count; ++i )
+    glVertex2f(g_polygon[i*2], g_polygon[i*2+1]);
+  glEnd();
+  glPopMatrix();
+}
+
+void frame(GLFWwindow* window)
 {
 	int width = 0, height = 0;
 
@@ -19,13 +74,13 @@ void drawframe(GLFWwindow* window)
 	glViewport(0, 0, width, height);
 	glClearColor(20.0f/255.0f, 20.0f/255.0f, 90.0f/255.0f, 1.0f);
 	glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
-	//glEnable(GL_BLEND);
-	//glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	glDisable(GL_TEXTURE_2D);
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
 
-	glOrtho(-100.0f, 100.0f, -100.0f, 100.0f, -1, 1);
+	glOrtho(viewbounds[0], viewbounds[1], viewbounds[2], viewbounds[3], viewbounds[4], viewbounds[5]);
 
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
@@ -35,26 +90,23 @@ void drawframe(GLFWwindow* window)
 	glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
 
 	// Draw bounds
-	glColor4ub(255,0,0,255);
-	glBegin(GL_LINE_LOOP);
-	glVertex2f(0, 0);
-	glVertex2f(50.0f, 0);
-	glVertex2f(50.0f, 50.0f);
-	glVertex2f(0, 50.0f);
-	glEnd();
+  drawPolygon(1, g_polygon, g_polycount, -20.0f, .0f);
+  drawPolygon(0, g_polygon, g_polycount, +20.0f, .0f);	
 
 	glfwSwapBuffers(window);
 }
 
 void resizecb(GLFWwindow* window, int width, int height)
 {
-	drawframe(window);
+	frame(window);
 }
 
 int main()
 {
 	GLFWwindow* window;
 	const GLFWvidmode* mode;
+
+  g_partscount = cdec2d_decomp_cw( g_polygon, g_polycount, sizeof(float)*2, &g_parts, &g_psizes);
 
 	if (!glfwInit())
 		return -1;
@@ -70,14 +122,17 @@ int main()
 
 	glfwSetFramebufferSizeCallback(window, resizecb);
 	glfwMakeContextCurrent(window);
-	//glEnable(GL_POINT_SMOOTH);
-	//glEnable(GL_LINE_SMOOTH);
+  //glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+	glEnable(GL_POINT_SMOOTH);
+	glEnable(GL_LINE_SMOOTH);
 
 	while (!glfwWindowShouldClose(window))
 	{
-		drawframe(window);
+		frame(window);
 		glfwPollEvents();
 	}
+
+  cdec2d_free_parts(&g_parts, &g_psizes, g_partscount);
 
 	glfwTerminate();
 	return 0;
