@@ -6,7 +6,7 @@ Not based in any particular algorithm, just fooling with ideas.<br/>
 OpenGL viewer provided. Depends on GLFW which is included but also in https://github.com/glfw/glfw
 
 # How it works
-The algorithm works like following:
+the idea is the following, not implemented yet
 <pre>
    LOOP1
    if first partition, 
