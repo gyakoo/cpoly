@@ -1,7 +1,7 @@
 # cdec2d
-Some tests of convex Decomposition of 2D Polygons in C
-Generate convex polygons out of any arbitrary polygon
-Not based in any particular algorithm, just fooling with ideas.
+Some tests of convex Decomposition of 2D Polygons in C<br/>
+It generates convex polygons out of any arbitrary polygon<br/>
+Not based in any particular algorithm, just fooling with ideas.<br/>
 
 OpenGL viewer provided.
 
