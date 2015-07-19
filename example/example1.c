@@ -28,7 +28,7 @@ float g_polygon[]={
 const int g_polycount= sizeof(g_polygon)/(sizeof(float)*2);
 
 // decomp result
-int** g_parts=0;
+int* g_parts=0;
 int* g_psizes=0;
 int g_partscount=0;
 
@@ -132,7 +132,7 @@ int main()
 		glfwPollEvents();
 	}
 
-  cdec2d_free_parts(&g_parts, &g_psizes, g_partscount);
+  cdec2d_free_parts(&g_parts, &g_psizes);
 
 	glfwTerminate();
 	return 0;
