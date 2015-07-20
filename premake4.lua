@@ -1,7 +1,7 @@
 
 local action = _ACTION or ""
 
-solution "cdec2d"
+solution "cpoly"
 	location ( "build" )
 	configurations { "Debug", "Release" }
 	platforms {"native", "x64", "x32"}

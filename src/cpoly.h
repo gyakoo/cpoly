@@ -10,7 +10,7 @@ int count=0;
 int i,j,start,end;
 float* offs;
 
-count = cdec2d_decomp_cw( polygonPoints, N, sizeof(float)*2, &partIndices, &partOffsets);
+count = cpoly_partitioning( polygonPoints, N, sizeof(float)*2, &partIndices, &partOffsets);
 if ( count > 0 )
 {
   start = 0;
@@ -26,13 +26,13 @@ if ( count > 0 )
     start = end;
     printf ( "\n" );
   }
-  cdec2d_free_parts(&partIndices, &partOffsets, count);
+  cpoly_free_parts(&partIndices, &partOffsets, count);
 }
 
  */
 
-#ifndef CDEC2D_H
-#define CDEC2D_H
+#ifndef CPOLY_H
+#define CPOLY_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -47,18 +47,18 @@ extern "C" {
   // return the number of parts
   // Remarks:
   // 
-  int cdec2d_decomp_cw(void* pts, int npts, int stride, int** partndxs, int** poffsets);
+  int cpoly_partitioning_cw(void* pts, int npts, int stride, int** partndxs, int** poffsets);
 
-  // Deallocates memory previously allocated by cdec2d_decomp* functions
-  void cdec2d_free_parts(int** parts, int** psizes);
+  // Deallocates memory previously allocated by cpoly_decomp* functions
+  void cpoly_free_parts(int** parts, int** psizes);
 
 #ifdef __cplusplus
 };
 #endif
 
-#endif // CDEC2D_H
+#endif // CPOLY_H
 
-#ifdef CDEC2D_IMPLEMENTATION
+#ifdef CPOLY_IMPLEMENTATION
 
 
 #ifdef _MSC_VER
@@ -67,7 +67,7 @@ extern "C" {
 #endif
 
 
-int cdec2d_decomp_cw(void* pts, int npts, int stride, int** partndxs, int** poffsets)
+int cpoly_partitioning_cw(void* pts, int npts, int stride, int** partndxs, int** poffsets)
 {
   return 0;
   /*
@@ -93,7 +93,7 @@ int cdec2d_decomp_cw(void* pts, int npts, int stride, int** partndxs, int** poff
    */
 }
 
-void cdec2d_free_parts(int** partndxs, int** poffsets)
+void cpoly_free_parts(int** partndxs, int** poffsets)
 {
   int i=0; 
 

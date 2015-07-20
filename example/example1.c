@@ -8,8 +8,8 @@
 #include <GLFW/glfw3.h>
 #pragma comment(lib, "glfw3.lib")
 
-#define CDEC2D_IMPLEMENTATION
-#include "cdec2d.h"
+#define CPOLY_IMPLEMENTATION
+#include "cpoly.h"
 
 // ortho proj
 const double viewbounds[]={-50, 50, -50, 50, -1, 1};
@@ -106,13 +106,13 @@ int main()
 	GLFWwindow* window;
 	const GLFWvidmode* mode;
 
-  g_partscount = cdec2d_decomp_cw( g_polygon, g_polycount, sizeof(float)*2, &g_parts, &g_psizes);
+  g_partscount = cpoly_partitioning_cw( g_polygon, g_polycount, sizeof(float)*2, &g_parts, &g_psizes);
 
 	if (!glfwInit())
 		return -1;
 
 	mode = glfwGetVideoMode(glfwGetPrimaryMonitor());
-  window = glfwCreateWindow(1024, 768, "cdec2d", NULL, NULL);
+  window = glfwCreateWindow(1024, 768, "cpoly", NULL, NULL);
 	if (!window)
 	{
 		printf("Could not open window\n");
@@ -132,7 +132,7 @@ int main()
 		glfwPollEvents();
 	}
 
-  cdec2d_free_parts(&g_parts, &g_psizes);
+  cpoly_free_parts(&g_parts, &g_psizes);
 
 	glfwTerminate();
 	return 0;
