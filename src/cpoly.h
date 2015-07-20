@@ -39,15 +39,10 @@ extern "C" {
 #endif
 
   // Decomposes a polygon into a set of convex polygons (ClockWise)
-  // 'pts' is the array of polygon points, it should point to a pair of float x,y.
-  // 'npts' is the number of points
-  // 'stride' is the no. of bytes until next point
-  // 'partndx' will allocate an array with all partition indices. see remarks
-  // 'poffsets' will allocate an array with offsets in 'partndxs' with partitions. length = return count - 1. see remarks
-  // return the number of parts
   // Remarks:
   // 
   int cpoly_partitioning_cw(void* pts, int npts, int stride, int** partndxs, int** poffsets);
+  int cpoly_is_convex(void* pts, int npts, int stride);
 
   // Deallocates memory previously allocated by cpoly_decomp* functions
   void cpoly_free_parts(int** parts, int** psizes);
@@ -95,7 +90,7 @@ int cpoly_partitioning_cw(void* pts, int npts, int stride, int** partndxs, int**
 
 void cpoly_free_parts(int** partndxs, int** poffsets)
 {
-  int i=0; 
+//  int i=0; 
 
   if ( !partndxs || !*partndxs || !poffsets || !*poffsets )
     return;
@@ -103,6 +98,40 @@ void cpoly_free_parts(int** partndxs, int** poffsets)
   free(*poffsets);
   *partndxs = *poffsets = 0;
 }
+
+// checks if all consecutive edges have same sign of the z component of their cross products
+// all negative => convex CW  (return 1)
+// all positive => convex CCW (return 2)
+// mix sign => not convex (return 0)
+int cpoly_is_convex(void* pts, int npts, int stride)
+{
+  int i0, i1, i2;
+  int count;
+  float curz=.0f, lastz=.0f, s;
+  float x0,y0,x1,y1,x2,y2;
+  char* ptr=(char*)pts, *curptr;
+  if ( npts <= 2 ) return 0;
+  
+  count=npts-1;
+  for (i0=0, i1=1; i0<count; ++i0, ++i1, ptr+=stride)
+  {
+    curptr = ptr;
+    i2=(i1+1)%npts;
+
+    // z comp of cross product of both edges
+    x0 = *(float*)(curptr+0); y0 = *(float*)(curptr+sizeof(float)); curptr+=stride;
+    x1 = *(float*)(curptr+0); y1 = *(float*)(curptr+sizeof(float)); curptr+=stride;
+    x2 = *(float*)(curptr+0); y2 = *(float*)(curptr+sizeof(float));
+    curz = (x1-x0)*(y2-y1) - (y1-y0)*(x2-x1);
+
+    // changed sign?
+    s=curz*lastz;
+    if ( s < .0f ) return 0;
+    lastz = curz;
+  }
+  return (lastz < .0f) ? 1 : 2;
+}
+
 
 
 #endif

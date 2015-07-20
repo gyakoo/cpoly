@@ -12,7 +12,7 @@
 #include "cpoly.h"
 
 // ortho proj
-const double viewbounds[]={-50, 50, -50, 50, -1, 1};
+const double viewbounds[]={-100, 100, -100, 100, -1, 1};
 
 // original polygon to be decomposed
 float g_polygon[]={ 
@@ -26,6 +26,17 @@ float g_polygon[]={
   -20.0f, -15.0f // 7
 };
 const int g_polycount= sizeof(g_polygon)/(sizeof(float)*2);
+
+float g_convexpoly[] ={
+  -10.0f,20.0f,  // 0
+  0.0f, 25.0f,   // 1
+  10.0f, 20.0f,  // 2
+  20.0f, -5.0f,  // 3
+  25.0f, -25.0f,    // 4
+  -5.0f, -40.0f,  // 5
+  -20.0f, -15.0f // 6
+};
+const int g_convexpolycount= sizeof(g_convexpoly)/(sizeof(float)*2);
 
 // decomp result
 int* g_parts=0;
@@ -47,20 +58,20 @@ void drawPolygon(char fill, float* poly, int count, float x, float y)
   {
     glBegin(GL_TRIANGLE_FAN);
     for ( i = 0; i < count; ++i )
-      glVertex2f(g_polygon[i*2], g_polygon[i*2+1]);
+      glVertex2f(poly[i*2], poly[i*2+1]);
     glEnd();
   }
 
   glColor4ub(255,255,255,255);
   glBegin(GL_LINE_LOOP);
   for ( i = 0; i < count; ++i )
-    glVertex2f(g_polygon[i*2], g_polygon[i*2+1]);
+    glVertex2f(poly[i*2], poly[i*2+1]);
   glEnd();
 
   glColor4ub(255,255,0,255);
   glBegin(GL_POINTS);
   for ( i = 0; i < count; ++i )
-    glVertex2f(g_polygon[i*2], g_polygon[i*2+1]);
+    glVertex2f(poly[i*2], poly[i*2+1]);
   glEnd();
   glPopMatrix();
 }
@@ -90,8 +101,11 @@ void frame(GLFWwindow* window)
 	glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
 
 	// Draw bounds
-  drawPolygon(1, g_polygon, g_polycount, -20.0f, .0f);
-  drawPolygon(0, g_polygon, g_polycount, +20.0f, .0f);	
+  drawPolygon(1, g_polygon, g_polycount, -40.0f, 40.0f);
+  drawPolygon(0, g_polygon, g_polycount, +40.0f, 40.0f);	
+
+  drawPolygon(1, g_convexpoly, g_convexpolycount, -40.0f, -40.0f);
+  drawPolygon(0, g_convexpoly, g_convexpolycount, +40.0f, -40.0f);	
 
 	glfwSwapBuffers(window);
 }
@@ -105,6 +119,8 @@ int main()
 {
 	GLFWwindow* window;
 	const GLFWvidmode* mode;
+
+  cpoly_is_convex(g_convexpoly,g_convexpolycount,sizeof(float)*2);
 
   g_partscount = cpoly_partitioning_cw( g_polygon, g_polycount, sizeof(float)*2, &g_parts, &g_psizes);
 
