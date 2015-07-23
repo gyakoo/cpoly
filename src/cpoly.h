@@ -11,7 +11,8 @@ extern "C" {
 #endif
 
   // Partition a polygon into a set of convex polygons (ClockWise)
-  int cpoly_partitioning_cw(void* pts, int npts, int stride, int** partndxs, int** poffsets);
+  int cpoly_cv_partitioning_cw(void* pts, int npts, int stride, int** partndxs, int** poffsets);
+  
   // Deallocates memory previously allocated by cpoly_decomp* functions
   void cpoly_free_parts(int** parts, int** psizes);
 
@@ -23,6 +24,12 @@ extern "C" {
 
   // Return 1 if two convex polygons intersects (Separating Axis Theorem)
   int cpoly_cv_intersects_SAT(void* pts0, int npts0, int stride0, void* pts1, int npts1, int stride1);
+
+  // Return 1 if two segment a and b intersects  (optionally returns the intersection point)
+  int cpoly_segment_intersect(float x0, float y0, float x1, float y1, float x2, float y2, float x3, float y3, float* ix, float* iy);
+
+  // union of convex polygons, assume convex and intersecting
+  int cpoly_cv_union(void* pts0, int npts0, int stride0, void* pts1, int npts1, int stride1);
 
 #ifdef __cplusplus
 };
@@ -41,11 +48,15 @@ extern "C" {
 
 // NEGATIVE is to the eye (CW) POSITIVE is towards the screen (CCW)
 #define cpoly_zcross(x0,y0, x1, y1, x2, y2) ((x1-x0)*(y2-y1) - (y1-y0)*(x2-x1))
+
+// returns x from a stream of floats (pointer, stride, index)
 #define cpoly_getx(p,s,n) * (    (float*)( (char*)(p) + ((s)*(n)) ) )
+
+// returns y from a stream of floats (considering y consecutive to x) (pointer, stride, index)
 #define cpoly_gety(p,s,n) * (    (float*)( (char*)(p) + ((s)*(n)+sizeof(float)) ) )
 
 
-int cpoly_partitioning_cw(void* pts, int npts, int stride, int** partndxs, int** poffsets)
+int cpoly_cv_partitioning_cw(void* pts, int npts, int stride, int** partndxs, int** poffsets)
 {
   return 0;
   /*
@@ -88,24 +99,20 @@ void cpoly_free_parts(int** partndxs, int** poffsets)
 // mix sign => not convex (return 0)
 int cpoly_is_convex(void* pts, int npts, int stride)
 {
-  int i0, i1, i2;
-  int count;
-  float curz=.0f, lastz=.0f, s;
+  int i;
+  float s;
+  float curz=.0f, lastz=.0f;
   float x0,y0,x1,y1,x2,y2;
-  char* ptr=(char*)pts, *curptr;
   
   if ( npts <= 2 ) return 0; // not a polygon
   
-  count=npts-1;
-  for (i0=0, i1=1; i0<count; ++i0, ++i1, ptr+=stride)
+  for (i=0;i<npts-1;++i)
   {
-    curptr = ptr;
-    i2=(i1+1)%npts;
+    x0 = cpoly_getx(pts,stride,i); y0 = cpoly_gety(pts,stride,i);
+    x1 = cpoly_getx(pts,stride,i+1); y1 = cpoly_gety(pts,stride,i+1);
+    x2 = cpoly_getx(pts,stride,(i+2)%npts); y2 = cpoly_gety(pts,stride,(i+2)%npts);
 
     // z comp of cross product of both edges
-    x0 = *(float*)(curptr+0); y0 = *(float*)(curptr+sizeof(float)); curptr+=stride;
-    x1 = *(float*)(curptr+0); y1 = *(float*)(curptr+sizeof(float)); curptr+=stride;
-    x2 = *(float*)(curptr+0); y2 = *(float*)(curptr+sizeof(float));
     curz = cpoly_zcross(x0,y0,x1,y1,x2,y2);
 
     // changed sign?
@@ -119,7 +126,6 @@ int cpoly_is_convex(void* pts, int npts, int stride)
 // check if point inside a CONVEX polygon
 int cpoly_cv_point_inside(void* pts, int npts, int stride, float x, float y)
 {
-  char* curptr=(char*)pts;
   float _x0,_y0,x0,y0,x1,y1,x2,y2;
   float zcross, curz;
   int i;
@@ -127,9 +133,9 @@ int cpoly_cv_point_inside(void* pts, int npts, int stride, float x, float y)
   if ( npts <= 2 ) return 0; // not a polygon
 
   // check order (cw or ccw)
-  _x0= x0 = *(float*)(curptr+0); _y0 = y0 = *(float*)(curptr+sizeof(float)); curptr+=stride;
-  x1 = *(float*)(curptr+0); y1 = *(float*)(curptr+sizeof(float)); curptr+=stride;
-  x2 = *(float*)(curptr+0); y2 = *(float*)(curptr+sizeof(float)); curptr+=stride;
+  _x0= x0 = cpoly_getx(pts,stride,0); _y0= y0 = cpoly_gety(pts,stride,0);
+  x1      = cpoly_getx(pts,stride,1); y1      = cpoly_gety(pts,stride,1);
+  x2      = cpoly_getx(pts,stride,2); y2      = cpoly_gety(pts,stride,2);
   zcross = cpoly_zcross(x0,y0,x1,y1,x2,y2);
 
   // we have already the first three points
@@ -138,9 +144,9 @@ int cpoly_cv_point_inside(void* pts, int npts, int stride, float x, float y)
 
   // iterate all remaining points
   x0=x2; y0=y2;
-  for ( i=3; i<npts;++i,curptr+=stride)
+  for ( i=3; i<npts;++i)
   {
-    x1 = *(float*)(curptr+0); y1 = *(float*)(curptr+sizeof(float));
+    x1 = cpoly_getx(pts,stride,i); y1 = cpoly_gety(pts,stride,i);
     curz = cpoly_zcross(x0,y0,x1,y1,x,y); if ( (curz*zcross) < 0.0f ) return 0;
     x0=x1; y0=y1;
   }
@@ -151,6 +157,7 @@ int cpoly_cv_point_inside(void* pts, int npts, int stride, float x, float y)
 }
 
 // Separating Axis Theorem
+// The MTV is the minimum magnitude vector used to push the shapes out of the collision.
 //#define CPOLY_ISECT_SAT_FINDMTV
 int cpoly_cv_intersects_SAT(void* pts0, int npts0, int stride0, void* pts1, int npts1, int stride1/*=-1*/)
 {
@@ -207,7 +214,6 @@ int cpoly_cv_intersects_SAT(void* pts0, int npts0, int stride0, void* pts1, int 
       else
       {
         // find minimum traslation vector (mtv) 
-        // The MTV is the minimum magnitude vector used to push the shapes out of the collision.
         ovlap = (maxis[0]>minis[1])?(maxis[0]-minis[1]):(maxis[1]-minis[0]); // overlapping len
         if ( ovlap < minovlap )
         {
@@ -220,6 +226,34 @@ int cpoly_cv_intersects_SAT(void* pts0, int npts0, int stride0, void* pts1, int 
   }
   // we went through all edges and no separating axis found, we have an intersection
   return 1;
+}
+
+
+int cpoly_segment_intersect(float x0, float y0, float x1, float y1, float x2, float y2, float x3, float y3, float* ix, float* iy)
+{
+  const float a=x2-x0; const float b=x3-x2;
+  const float c=x1-x0; const float d=y3-y2;
+  const float e=y2-y0; const float f=y1-y0;
+  const float t =  (c*e - a*f) / (b*f - d*c);
+  const float s = (1.0f/c)*( t*b + a);
+
+  // if are indeterminated, they're colinear
+  // if are infinite, they're parallel
+  // in both cases no inters and will return 0
+  // segments, so they'd be in the range
+  if ( s>=0.0f && s<=1.0f && t>=0.0f && t<=1.0f )
+  {
+    if ( ix ) *ix= x0 + s*c;
+    if ( iy ) *iy= y0 + s*f;
+    return 1;
+  }
+  return 0;
+}
+
+
+int cpoly_cv_union(void* pts0, int npts0, int stride0, void* pts1, int npts1, int stride1)
+{
+  return 0;
 }
 
 

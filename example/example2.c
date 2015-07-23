@@ -13,16 +13,16 @@
 #include "cpoly.h"
 
 // ortho proj
-const double viewbounds[]={-100, 100, -100, 100, -1, 1};
+const double viewbounds[]={-80, 80, -80, 80, -1, 1};
 
 float g_convexpoly0[] ={
-  -10.0f,20.0f,  // 0
-  0.0f, 25.0f,   // 1
-  10.0f, 20.0f,  // 2
-  20.0f, -5.0f,  // 3
-  25.0f, -25.0f,    // 4
-  -5.0f, -40.0f,  // 5
-  -20.0f, -15.0f // 6
+  -5.0f  , 45.0f,  // 0
+  5.0f    , 50.0f,   // 1
+  15.0f   , 45.0f,  // 2
+  25.0f   , 20.0f,  // 3
+  30.0f   , 0.0f, // 4
+  0.0f   , -15.0f, // 5
+  -15.0f  , 10.0f // 6
 };
 const int g_convexpolycount0= sizeof(g_convexpoly0)/(sizeof(float)*2);
 
@@ -38,12 +38,8 @@ float g_convexpoly1[] ={
 };
 const int g_convexpolycount1= sizeof(g_convexpoly1)/(sizeof(float)*2);
 float g_convexTransform[sizeof(g_convexpoly1)]={0};
-const float C_REDISH[4]={50/255.0f,0,10/255.0f,1};
-// decomp result
-int* g_parts=0;
-int* g_psizes=0;
-int g_partscount=0;
-
+float C_REDISH[4]={50/255.0f,0,10/255.0f,0.5f};
+float C_GREENISH[4]={0,50/255.0f,10/255.0f,1};
 
 void drawPolygon(char fill, float* poly, int count, float x, float y, float* color)
 {
@@ -82,12 +78,12 @@ void drawPolygon(char fill, float* poly, int count, float x, float y, float* col
 void frame(GLFWwindow* window)
 {
 	int width = 0, height = 0;
-  float x0,y0,x1,y1,d0,d1;
+  float x0,y0,x1,y1,x2,y2,x3,y3;
   float a,step;
-  int i;
+  int i,j;
   float* fc;
   static float globalTime=0.0f;
-  float othc[4]={120/255.0f,0,10/255.0f,1};
+  float othc[4]={1,0,10/255.0f,0.3f};
 
   globalTime += 1.0f/60.0f;
 	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
@@ -111,10 +107,10 @@ void frame(GLFWwindow* window)
 	glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
 
 	// Draw 
-  //drawPolygon(1, g_convexpoly0, g_convexpolycount0, 0.0f, 0.0f,C_REDISH);
-  drawPolygon(1, g_convexpoly1, g_convexpolycount1, 0.0f, 0.0f,C_REDISH);	
-  //drawPolygon(0, g_convexpoly0, g_convexpolycount0, 0.0f, 0.0f,C_REDISH);
-  drawPolygon(0, g_convexpoly1, g_convexpolycount1, 0.0f, 0.0f,C_REDISH);
+  drawPolygon(1, g_convexpoly0, g_convexpolycount0, 0.0f, 0.0f, C_GREENISH);
+  drawPolygon(1, g_convexpoly1, g_convexpolycount1, 0.0f, 0.0f, C_REDISH);	
+  drawPolygon(0, g_convexpoly0, g_convexpolycount0, 0.0f, 0.0f, C_GREENISH);
+  drawPolygon(0, g_convexpoly1, g_convexpolycount1, 0.0f, 0.0f, C_REDISH);
 
 
   glColor4ub(255,0,255,255);    
@@ -127,38 +123,40 @@ void frame(GLFWwindow* window)
   }
   glEnd();
 
+  // cpu transform of polygon g_convexTransform
   for ( i=0; i< g_convexpolycount1; ++i )
   {
     g_convexTransform[i*2] = g_convexpoly1[i*2]+cos(globalTime*0.5f)*60.0f;
-    g_convexTransform[i*2+1] = g_convexpoly1[i*2+1];
+    g_convexTransform[i*2+1] = g_convexpoly1[i*2+1]+sin(globalTime*2.0f)*10.0f;
   }
+  // coloring if intersects
   fc = cpoly_cv_intersects_SAT(g_convexpoly1, g_convexpolycount1, sizeof(float)*2, g_convexTransform, g_convexpolycount1, -1) ? othc : C_REDISH;
   drawPolygon(1, g_convexTransform, g_convexpolycount1, 0.0f, 0.0f,fc);
   drawPolygon(0, g_convexTransform, g_convexpolycount1, 0.0f, 0.0f,fc);
-  
 
-  /*
-  x0=cos(ta)*20.0f,y0=sin(ta)*20.0f;
+  // test for line segment intersection
   glBegin(GL_LINES);
-    glColor4ub(255,255,255,255);
-    glVertex2f(0,0); glVertex2f(x0,y0);
-    glColor4ub(255,255,255,100);
-    glVertex2f(0,0); glVertex2f(-x0,-y0);
-  glEnd();
-
-  glPointSize(4.0f);
-  glBegin(GL_POINTS);
-  a=.0f; step=3.14159f*2.0f/32;
-  for (i=0;i<32;++i,a+=step)
+  for ( i=0; i < g_convexpolycount0; ++i )
   {
-    x1=cos(a)*15.0f; y1=sin(a)*15.0f;
-    d0 = cpoly_zcross(0,0,x0,y0,x1,y1);
-    if ( d0<=.0f) glColor4ub(255,255,255,255); else glColor4ub(0,255,0,255);
+    glColor4ub(255,255,255,255);
+    x0= g_convexpoly0[i*2]; y0=g_convexpoly0[i*2+1];
+    x1= g_convexpoly0[((i+1)%g_convexpolycount0)*2]; y1=g_convexpoly0[((i+1)%g_convexpolycount0)*2+1];
+    for ( j=0; j < g_convexpolycount1; ++j )
+    {
+      x2= g_convexpoly1[j*2]; y2=g_convexpoly1[j*2+1];
+      x3= g_convexpoly1[((j+1)%g_convexpolycount1)*2]; y3=g_convexpoly1[((j+1)%g_convexpolycount1)*2+1];      
+      if ( cpoly_segment_intersect(x0,y0,x1,y1,x2,y2,x3,y3,0,0) )
+      {
+        glColor4ub(255,0,0,255);
+        break;
+      }
+    }
+    glVertex2f(x0,y0);
     glVertex2f(x1,y1);
   }
   glEnd();
-  */
-	glfwSwapBuffers(window);
+
+  glfwSwapBuffers(window);
 }
 
 void resizecb(GLFWwindow* window, int width, int height)
@@ -177,6 +175,10 @@ int main()
 {
 	GLFWwindow* window;
 	const GLFWvidmode* mode;
+
+
+  int r = cpoly_segment_intersect(0,0,1,1, 0,0,2,2, NULL,NULL);
+
 
   if ( !cpoly_is_convex(g_convexpoly0,g_convexpolycount0,sizeof(float)*2) ||
        !cpoly_is_convex(g_convexpoly1,g_convexpolycount1,sizeof(float)*2) )

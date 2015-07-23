@@ -129,7 +129,7 @@ int main()
 
   cpoly_is_convex(g_convexpoly0,g_convexpolycount0,sizeof(float)*2);
 
-  g_partscount = cpoly_partitioning_cw( g_polygon, g_polycount, sizeof(float)*2, &g_parts, &g_psizes);
+  g_partscount = cpoly_cv_partitioning_cw( g_polygon, g_polycount, sizeof(float)*2, &g_parts, &g_psizes);
 
 	if (!glfwInit())
 		return -1;
