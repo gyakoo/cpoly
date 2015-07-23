@@ -111,10 +111,10 @@ void frame(GLFWwindow* window)
 	glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
 
 	// Draw 
-  drawPolygon(1, g_convexpoly0, g_convexpolycount0, 0.0f, 0.0f,C_REDISH);
-  //drawPolygon(1, g_convexpoly1, g_convexpolycount1, 0.0f, 0.0f,C_REDISH);	
-  drawPolygon(0, g_convexpoly0, g_convexpolycount0, 0.0f, 0.0f,C_REDISH);
-  //drawPolygon(0, g_convexpoly1, g_convexpolycount1, 0.0f, 0.0f,C_REDISH);
+  //drawPolygon(1, g_convexpoly0, g_convexpolycount0, 0.0f, 0.0f,C_REDISH);
+  drawPolygon(1, g_convexpoly1, g_convexpolycount1, 0.0f, 0.0f,C_REDISH);	
+  //drawPolygon(0, g_convexpoly0, g_convexpolycount0, 0.0f, 0.0f,C_REDISH);
+  drawPolygon(0, g_convexpoly1, g_convexpolycount1, 0.0f, 0.0f,C_REDISH);
 
 
   glColor4ub(255,0,255,255);    
@@ -132,7 +132,7 @@ void frame(GLFWwindow* window)
     g_convexTransform[i*2] = g_convexpoly1[i*2]+cos(globalTime*0.5f)*60.0f;
     g_convexTransform[i*2+1] = g_convexpoly1[i*2+1];
   }
-  fc = cpoly_cv_intersects(g_convexpoly1, g_convexpolycount1, sizeof(float)*2, g_convexTransform, g_convexpolycount1, -1) ? othc : C_REDISH;
+  fc = cpoly_cv_intersects_SAT(g_convexpoly1, g_convexpolycount1, sizeof(float)*2, g_convexTransform, g_convexpolycount1, -1) ? othc : C_REDISH;
   drawPolygon(1, g_convexTransform, g_convexpolycount1, 0.0f, 0.0f,fc);
   drawPolygon(0, g_convexTransform, g_convexpolycount1, 0.0f, 0.0f,fc);
   

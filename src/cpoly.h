@@ -5,6 +5,7 @@
 #ifndef CPOLY_H
 #define CPOLY_H
 
+#include <math.h>
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -20,8 +21,8 @@ extern "C" {
   // Returns 1 if the point is inside a convex polygon
   int cpoly_cv_point_inside(void* pts, int npts, int stride, float x, float y);
 
-  // Return 1 if two convex polygons intersects
-  int cpoly_cv_intersects(void* pts0, int npts0, int stride0, void* pts1, int npts1, int stride1);
+  // Return 1 if two convex polygons intersects (Separating Axis Theorem)
+  int cpoly_cv_intersects_SAT(void* pts0, int npts0, int stride0, void* pts1, int npts1, int stride1);
 
 #ifdef __cplusplus
 };
@@ -34,8 +35,14 @@ extern "C" {
 
 #ifdef _MSC_VER
 	#pragma warning (disable: 4996) // Switch off security warnings
-	#pragma warning (disable: 4100) // Switch off unreferenced formal parameter warnings
+  #pragma warning (disable: 4100) // Switch off unreferenced formal parameter warnings
+  #pragma warning (disable: 4204) // Switch off nonstandard extension used : non-constant aggregate initializer
 #endif
+
+// NEGATIVE is to the eye (CW) POSITIVE is towards the screen (CCW)
+#define cpoly_zcross(x0,y0, x1, y1, x2, y2) ((x1-x0)*(y2-y1) - (y1-y0)*(x2-x1))
+#define cpoly_getx(p,s,n) * (    (float*)( (char*)(p) + ((s)*(n)) ) )
+#define cpoly_gety(p,s,n) * (    (float*)( (char*)(p) + ((s)*(n)+sizeof(float)) ) )
 
 
 int cpoly_partitioning_cw(void* pts, int npts, int stride, int** partndxs, int** poffsets)
@@ -74,9 +81,6 @@ void cpoly_free_parts(int** partndxs, int** poffsets)
   free(*poffsets);
   *partndxs = *poffsets = 0;
 }
-
-// NEGATIVE is to the eye (CW) POSITIVE is towards the screen (CCW)
-#define cpoly_zcross(x0,y0, x1, y1, x2, y2) ((x1-x0)*(y2-y1) - (y1-y0)*(x2-x1))
 
 // checks if all consecutive edges have same sign of the z component of their cross products
 // all negative => convex CW  (return 1)
@@ -146,51 +150,76 @@ int cpoly_cv_point_inside(void* pts, int npts, int stride, float x, float y)
   return 1;
 }
 
-// sweeping to axes and finding
-int cpoly_cv_intersects(void* pts0, int npts0, int stride0, void* pts1, int npts1, int stride1/*=-1*/)
+// Separating Axis Theorem
+//#define CPOLY_ISECT_SAT_FINDMTV
+int cpoly_cv_intersects_SAT(void* pts0, int npts0, int stride0, void* pts1, int npts1, int stride1/*=-1*/)
 {
-  char* ptr[2]={(char*)pts0, (char*)pts1};
-  const int pts[2]={npts0,npts1};
-  const int strides[2]={stride0, stride1<=0?stride0:stride1};
-  float minis[2][2]={FLT_MAX,FLT_MAX};
-  float maxis[2][2]={-FLT_MAX,-FLT_MAX};
-  float x,y;
-  int i;
-  char isect=0;
-  register float a,b,c,d;
-
-  // sweeping to axes to early discard far away polygons
-  // compute maximum and minimum of both polys in x and y
-//   for (i=0;i<2;++i)
-//   {
-//     x=*(float*)(ptr[i]); y=*(float*)(ptr[i]+sizeof(float));
-//     if ( x<=minis[i][0] ) minis[i][0]=x; if ( x>maxis[i][0] ) maxis[i][0]=x;
-//     if ( y<=minis[i][1] ) minis[i][1]=y; if ( y>maxis[i][1] ) maxis[i][1]=y;
-//     ptr[i]+=strides[i];
-//   }
-// 
-//   // check in X and Y-axis
-//   for ( i=0; i<2; ++i )
-//   {
-//     a = minis[0][i]; b=maxis[0][i];
-//     c = minis[1][i]; d=maxis[1][i];
-//     if ( c>=a && c<=b || d>=a && d<=b ) 
-//       ++isect;
-//   }
-//   if ( !isect ) 
-//     return 0;
+  // for all edges in polygon 0 + polygon 1
+    // normal to edge
+    // project all points of polygon 0 and 1 onto normal, computing their min and max values
+    // check if min/max for both in the normal, overlaps. 
+    // if no overlap => return 0
   
-  // if isect==1 || isect==2, possible intersection. 
-  // todo: place a good algorithm here, this is O(NM), probably good enough for small polygons
-  // but for ones with huge no. of vertices isn't good.
-  ptr[1]=(char*)pts1;
-  for ( i=0;i<npts1;++i,ptr[1]+=strides[1])
+  const int npts[2]={npts0,npts1};
+  const void* pts[2]={pts0,pts1};
+  const int stride[2]={stride0,stride1<=0?stride0:stride1};
+  float minis[2];
+  float maxis[2];
+  float nx,ny;
+  float x0,y0,x1,y1;
+  float xp,yp;
+  float d;
+  int P,p;
+  int e,v;
+#ifdef CPOLY_ISECT_SAT_FINDMTV
+  float minovlap=FLT_MAX,ovlap;
+  float mtvx,mtvy;
+#endif
+
+  // edges in both polygons
+  for ( P=0; P < 2; ++ P)
   {
-    x=*(float*)(ptr[1]); y=*(float*)(ptr[1]+sizeof(float));
-    if ( cpoly_cv_point_inside(pts0,npts0,stride0,x,y) )
-      return 1;
+    // for all edges of P
+    for (e=0; e < npts[P]; ++e)
+    {
+      x0=cpoly_getx(pts[P],stride[P],e); y0=cpoly_gety(pts[P],stride[P],e);
+      x1=cpoly_getx(pts[P],stride[P],(e+1)%npts[P]); y1=cpoly_gety(pts[P],stride[P],(e+1)%npts[P]);
+      // edge normal
+      nx = y1-y0; ny = -(x1-x0);
+      
+      // projecting all points from P0 and P1 onto normal and getting min and maxs
+      minis[0]=minis[1]=FLT_MAX; maxis[0]=maxis[1]=-FLT_MAX;
+      for (p=0;p<2;++p)
+      {
+        for (v=0;v<npts[p];++v)
+        {
+          xp=cpoly_getx(pts[p],stride[p],v); yp=cpoly_gety(pts[p],stride[p],v);
+          // project along normal and getting min/max
+          d=xp*nx + yp*ny;
+          if ( d < minis[p] ) minis[p]=d; if ( d > maxis[p] ) maxis[p]=d;
+        }
+      }
+
+      // if no overlapping of min/max for both polygons, we can return 0 (we found a separating axis)
+      if ( maxis[0]<minis[1] || maxis[1]<minis[0] )
+        return 0;
+#ifdef CPOLY_ISECT_SAT_FINDMTV
+      else
+      {
+        // find minimum traslation vector (mtv) 
+        // The MTV is the minimum magnitude vector used to push the shapes out of the collision.
+        ovlap = (maxis[0]>minis[1])?(maxis[0]-minis[1]):(maxis[1]-minis[0]); // overlapping len
+        if ( ovlap < minovlap )
+        {
+          minovlap = ovlap;
+          mtvx=nx; mtvy=ny;
+        }
+      }
+#endif
+    }
   }
-  return 0;
+  // we went through all edges and no separating axis found, we have an intersection
+  return 1;
 }
 
 
