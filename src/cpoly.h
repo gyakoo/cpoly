@@ -6,6 +6,7 @@
 #define CPOLY_H
 
 #include <math.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -26,9 +27,20 @@ extern "C" {
   int cpoly_cv_intersects_SAT(void* pts0, int npts0, int stride0, void* pts1, int npts1, int stride1);
 
   // Return 1 if two segment a and b intersects  (optionally returns the intersection point)
-  int cpoly_segment_intersect(float x0, float y0, float x1, float y1, float x2, float y2, float x3, float y3, float* ix, float* iy);
+  // 's' is the intersection fraction 0..1 from x0,y0 to x1,y1 when there's an intersection
+  int cpoly_seg_isec(float x0, float y0, float x1, float y1, float x2, float y2, float x3, float y3, float* s);
 
-  // union of convex polygons, assume convex and intersecting
+  // returns 1 if segment intersects polygon
+  // returns in ix,iy the closest intersection point
+  // edge is the edge index in the polygon assuming they're consecutive (edge=start vertex)
+  int cpoly_cv_seg_isec_poly_closest(float x0, float y0, float x1, float y1, void* pts, int npts, int stride, float* ix, float* iy, int* edge);
+
+  // returns 1 if segment intersects polygon
+  int cpoly_cv_seg_isec_poly_first(float x0, float y0, float x1, float y1, void* pts, int npts, int stride, float* ix, float* iy, int* edge);
+
+
+  // union of convex polygons
+  // assumes: convex polygons, intersecting, no one inside another, no holes.
   int cpoly_cv_union(void* pts0, int npts0, int stride0, void* pts1, int npts1, int stride1);
 
 #ifdef __cplusplus
@@ -39,6 +51,33 @@ extern "C" {
 
 #ifdef CPOLY_IMPLEMENTATION
 
+#ifndef CPOLY_MAXPOOLSIZE_BYTES 
+#define CPOLY_MAXPOOLSIZE_BYTES (16<<10)
+#else
+#if CPOLY_MAXPOOLSIZE_BYTES <= 32
+#undef CPOLY_MAXPOOLSIZE_BYTES
+#define CPOLY_MAXPOOLSIZE_BYTES (16<<10)
+#endif
+#endif
+
+#ifndef CPOLY_MAXBITSET_BYTES
+#define CPOLY_MAXBITSET_BYTES (256)
+#else
+#if CPOLY_MAXBITSET_BYTES <= 8
+#undef CPOLY_MAXBITSET_BYTES
+#define CPOLY_MAXBITSET_BYTES (256)
+#endif
+#endif
+
+// non thread safe shared pool
+unsigned char cpoly_pool[CPOLY_MAXPOOLSIZE_BYTES];
+const int cpoly_poolflts = CPOLY_MAXPOOLSIZE_BYTES/sizeof(float); // max no of floats in the pool
+const int cpoly_poolverts = CPOLY_MAXPOOLSIZE_BYTES/(sizeof(float)*2); // max no of vertices (x,y) in the pool
+int cpoly_pool_count=0;
+
+// bitset type
+typedef char cpoly_bitset[CPOLY_MAXBITSET_BYTES];
+const int cpoly_bitset_maxbits = CPOLY_MAXBITSET_BYTES*8;
 
 #ifdef _MSC_VER
 	#pragma warning (disable: 4996) // Switch off security warnings
@@ -229,7 +268,7 @@ int cpoly_cv_intersects_SAT(void* pts0, int npts0, int stride0, void* pts1, int 
 }
 
 
-int cpoly_segment_intersect(float x0, float y0, float x1, float y1, float x2, float y2, float x3, float y3, float* ix, float* iy)
+int cpoly_seg_isec(float x0, float y0, float x1, float y1, float x2, float y2, float x3, float y3, float* is)
 {
   const float a=x2-x0; const float b=x3-x2;
   const float c=x1-x0; const float d=y3-y2;
@@ -237,22 +276,126 @@ int cpoly_segment_intersect(float x0, float y0, float x1, float y1, float x2, fl
   const float t =  (c*e - a*f) / (b*f - d*c);
   const float s = (1.0f/c)*( t*b + a);
 
-  // if are indeterminated, they're colinear
+  // if are indeterminate, they're collinear
   // if are infinite, they're parallel
   // in both cases no inters and will return 0
   // segments, so they'd be in the range
   if ( s>=0.0f && s<=1.0f && t>=0.0f && t<=1.0f )
   {
-    if ( ix ) *ix= x0 + s*c;
-    if ( iy ) *iy= y0 + s*f;
+    if ( is ) *is= s;
     return 1;
-  }
+  }  
   return 0;
 }
 
 
+int __internal_cv_seg_isec_poly_closest(float x0, float y0, float x1, float y1, void* pts, int npts, int stride, float* ix, float* iy, int* edge, char breakfirst)
+{
+  int v;
+  float x2,y2,x3,y3;
+  float s, mins=FLT_MAX;
+  int tmp; 
+  if (!edge) edge=&tmp;
+  *edge=-1;
+  for (v=0;v<npts;++v)
+  {
+    x2=cpoly_getx(pts,stride,v);          y2=cpoly_gety(pts,stride,v);
+    x3=cpoly_getx(pts,stride,(v+1)%npts); y3=cpoly_gety(pts,stride,(v+1)%npts);
+    if ( cpoly_seg_isec(x0,y0,x1,y1,x2,y2,x3,y3,&s) && s<mins )
+    {
+      mins=s;      
+      *edge=v;
+      if ( breakfirst )
+        break;
+    }
+  }
+  if ( *edge== -1 )
+    return 0;
+
+  if ( ix ) *ix = x0 + (x1-x0)*mins;
+  if ( iy ) *iy = y0 + (y1-y0)*mins;
+  return 1;
+}
+
+int cpoly_cv_seg_isec_poly_closest(float x0, float y0, float x1, float y1, void* pts, int npts, int stride, float* ix, float* iy, int* edge)
+{
+  return __internal_cv_seg_isec_poly_closest(x0,y0,x1,y1,pts,npts,stride,ix,iy,edge,0);
+}
+
+int cpoly_cv_seg_isec_poly_first(float x0, float y0, float x1, float y1, void* pts, int npts, int stride, float* ix, float* iy, int* edge)
+{
+  return __internal_cv_seg_isec_poly_closest(x0,y0,x1,y1,pts,npts,stride,ix,iy,edge,1);
+}
+
+void cpoly_pool_add(float x, float y)
+{
+  float* ptr = (float*)( cpoly_pool+cpoly_pool_count*sizeof(float));
+  *(ptr++) = x; *ptr = y;
+  ++cpoly_pool_count;
+}
+
+void cpoly_bitset_reset(cpoly_bitset bs, int n)
+{
+  bs[n>>3] &= ~( 1<<(n%8) );
+}
+
+void cpoly_bitset_set(cpoly_bitset bs, int n)
+{
+  bs[n>>3] |= 1<<(n%8);
+}
+
+int cpoly_bitset_get(cpoly_bitset bs, int n)
+{
+  const int nmod8=n%8;
+  return (bs[n>>3] & (1<<nmod8)) >> nmod8;
+}
+
+// assumes: convex polygons, intersecting, no one inside another, no holes.
 int cpoly_cv_union(void* pts0, int npts0, int stride0, void* pts1, int npts1, int stride1)
 {
+  const int npts[2]={npts0,npts1};
+  void* pts[2]={pts0,pts1};
+  const int stride[2]={stride0,stride1<=0?stride0:stride1};
+  int P,v,e,oP;
+  float minx=FLT_MAX;
+  int minv, minp;
+  float x0,y0,x1,y1,ix,iy,s;
+  int counts[2]={0,0};
+  cpoly_bitset bitsets[2];
+
+  if (stride1<=0) stride1=stride0;
+  
+  // pick start vertex out of two polygons (can be the one with min X if we use a straight Vertical sweep line)
+  for (P=0;P<2;++P)
+  {
+    for (v=0;v<npts[P];++v )
+    {
+      x0 = cpoly_getx(pts[P],stride[P],v); y0 = cpoly_gety(pts[P],stride[P],v);
+      if ( x0<minx ) { minp=P; minv=v; minx=x0; }
+
+      // computes how many points for each polygon are outside the intersection region
+      if ( !cpoly_cv_point_inside(pts[P],npts[P],stride[P],x0,y0) ) // hm? expensive but necessary?
+        ++counts[P];
+    }
+  }
+
+  // start with that min vertex
+  v = minv; P = minp; oP=(P+1)%2;
+  cpoly_pool_count = 0;
+
+  // while still outside points to process for both
+  while ( counts[0] && counts[1] )
+  {
+    x0 = cpoly_getx(pts[P],stride[P],v); y0 = cpoly_gety(pts[P],stride[P],v);
+    x1 = cpoly_getx(pts[P],stride[P],(v+1)%npts[P]); y1 = cpoly_gety(pts[P],stride[P],(v+1)%npts[P]);
+    // for this edge, intersects with the any of the other polygon's edge?
+    if ( cpoly_cv_seg_isec_poly_closest(x0,y0,x1,y1,pts[oP],npts[oP],stride[oP],&ix,&iy,&e) )
+    {
+      v=e; //continues with next 
+      P=oP; oP=(oP+1)%2; // the other poly
+    }
+  }
+
   return 0;
 }
 

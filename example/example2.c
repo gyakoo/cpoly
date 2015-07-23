@@ -145,7 +145,7 @@ void frame(GLFWwindow* window)
     {
       x2= g_convexpoly1[j*2]; y2=g_convexpoly1[j*2+1];
       x3= g_convexpoly1[((j+1)%g_convexpolycount1)*2]; y3=g_convexpoly1[((j+1)%g_convexpolycount1)*2+1];      
-      if ( cpoly_segment_intersect(x0,y0,x1,y1,x2,y2,x3,y3,0,0) )
+      if ( cpoly_seg_isec(x0,y0,x1,y1,x2,y2,x3,y3,0) )
       {
         glColor4ub(255,0,0,255);
         break;
@@ -170,14 +170,13 @@ void keycallback(GLFWwindow* w, int key, int scancode, int action, int mods)
     glfwSetWindowShouldClose(w, GL_TRUE);
 }
 
-
 int main()
 {
 	GLFWwindow* window;
 	const GLFWvidmode* mode;
 
 
-  int r = cpoly_segment_intersect(0,0,1,1, 0,0,2,2, NULL,NULL);
+  int r = cpoly_seg_isec(0,0,1,1, 0,0,2,2, NULL);
 
 
   if ( !cpoly_is_convex(g_convexpoly0,g_convexpolycount0,sizeof(float)*2) ||
