@@ -27,7 +27,7 @@ float g_polygon[]={
 };
 const int g_polycount= sizeof(g_polygon)/(sizeof(float)*2);
 
-float g_convexpoly[] ={
+float g_convexpoly0[] ={
   -10.0f,20.0f,  // 0
   0.0f, 25.0f,   // 1
   10.0f, 20.0f,  // 2
@@ -36,7 +36,7 @@ float g_convexpoly[] ={
   -5.0f, -40.0f,  // 5
   -20.0f, -15.0f // 6
 };
-const int g_convexpolycount= sizeof(g_convexpoly)/(sizeof(float)*2);
+const int g_convexpolycount0= sizeof(g_convexpoly0)/(sizeof(float)*2);
 
 // decomp result
 int* g_parts=0;
@@ -104,8 +104,8 @@ void frame(GLFWwindow* window)
   drawPolygon(1, g_polygon, g_polycount, -40.0f, 40.0f);
   drawPolygon(0, g_polygon, g_polycount, +40.0f, 40.0f);	
 
-  drawPolygon(1, g_convexpoly, g_convexpolycount, -40.0f, -40.0f);
-  drawPolygon(0, g_convexpoly, g_convexpolycount, +40.0f, -40.0f);	
+  drawPolygon(1, g_convexpoly0, g_convexpolycount0, -40.0f, -40.0f);
+  drawPolygon(0, g_convexpoly0, g_convexpolycount0, +40.0f, -40.0f);	
 
 	glfwSwapBuffers(window);
 }
@@ -115,12 +115,19 @@ void resizecb(GLFWwindow* window, int width, int height)
 	frame(window);
 }
 
+void keycallback(GLFWwindow* w, int key, int scancode, int action, int mods)
+{
+  if ( key==GLFW_KEY_ESCAPE && action == GLFW_PRESS )
+    glfwSetWindowShouldClose(w, GL_TRUE);
+}
+
+
 int main()
 {
 	GLFWwindow* window;
 	const GLFWvidmode* mode;
 
-  cpoly_is_convex(g_convexpoly,g_convexpolycount,sizeof(float)*2);
+  cpoly_is_convex(g_convexpoly0,g_convexpolycount0,sizeof(float)*2);
 
   g_partscount = cpoly_partitioning_cw( g_polygon, g_polycount, sizeof(float)*2, &g_parts, &g_psizes);
 
@@ -138,6 +145,8 @@ int main()
 
 	glfwSetFramebufferSizeCallback(window, resizecb);
 	glfwMakeContextCurrent(window);
+  glfwSetKeyCallback(window, keycallback);
+
   //glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 	glEnable(GL_POINT_SMOOTH);
 	glEnable(GL_LINE_SMOOTH);

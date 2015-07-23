@@ -31,4 +31,30 @@ solution "cpoly"
 		configuration "Release"
 			defines { "NDEBUG" }
 			flags { "Optimize", "ExtraWarnings"}    
+            
+    project "example2"
+		kind "ConsoleApp"
+		language "C++"
+		files { "example/example2.c", "example/*.h", "src/*.h" }
+		includedirs { "example", "src" }
+		targetdir "build"
+        libdirs {"./src/GLFW/lib"}
+	 
+		configuration { "linux" }
+			 links { "X11","Xrandr", "rt", "GL", "GLU", "pthread" }
+
+		configuration { "windows" }
+			 links { "glu32","opengl32", "gdi32", "winmm", "user32" }
+
+		configuration { "macosx" }
+			links { "glfw3" }
+			linkoptions { "-framework OpenGL", "-framework Cocoa", "-framework IOKit", "-framework CoreVideo" }
+
+		configuration "Debug"
+			defines { "DEBUG" }
+			flags { "Symbols", "ExtraWarnings"}
+
+		configuration "Release"
+			defines { "NDEBUG" }
+			flags { "Optimize", "ExtraWarnings"}    
 	
