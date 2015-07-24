@@ -17,19 +17,7 @@
 
 // ortho proj
 const double viewbounds[]={-80, 80, -80, 80, -1, 1};
-
-float STRIDE=sizeof(float)*2;
-float g_convexpoly0[] ={
-  -10.0f  , 35.0f,  // 0
-  0.0f    , 40.0f,   // 1
-  10.0f   , 35.0f,  // 2
-  20.0f   , 10.0f,  // 3
-  25.0f   , -10.0f, // 4
-  -5.0f   , -25.0f, // 5
-  -10.0f  , 0.0f // 6
-};
-const int g_convexpolycount0= sizeof(g_convexpoly0)/(sizeof(float)*2);
-
+int  STRIDE=sizeof(float)*2;
 float g_convexpoly1[] ={
   5.0f,25.0f,  // 0
   15.0f, 30.0f,   // 1
@@ -42,6 +30,7 @@ float g_convexpoly1[] ={
 };
 const int g_convexpolycount1= sizeof(g_convexpoly1)/(sizeof(float)*2);
 float g_convexTransform[sizeof(g_convexpoly1)]={0};
+float g_convexpoly1pos[2];
 float C_REDISH[4]={50/255.0f,0,10/255.0f,0.5f};
 float C_GREENISH[4]={0,50/255.0f,10/255.0f,1};
 float C_GREEN[4]={0,1,0,1};
@@ -49,13 +38,10 @@ float C_GREEN[4]={0,1,0,1};
 void frame(GLFWwindow* window)
 {
 	int width = 0, height = 0;
-  float x0,y0,x1,y1,x2,y2,x3,y3;
-  float a,step;
-  int i,j;
+  int i;
   float* fc;
   static float globalTime=0.0f;
   float othc[4]={1,0,10/255.0f,0.3f};
-  float dslow=globalTime*0.01f;
 
   globalTime += 1.0f/60.0f;
 	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
@@ -79,57 +65,49 @@ void frame(GLFWwindow* window)
 	glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
 
 	// Draw 
-  if ( glfwGetKey(window,GLFW_KEY_SPACE)==GLFW_PRESS )
   {
-    cpoly_cv_union(g_convexpoly0, g_convexpolycount0, STRIDE, g_convexpoly1, g_convexpolycount1, STRIDE);
-    glBegin(GL_LINE_LOOP);
-    for ( i = 0; i < cpoly_pool_count; ++i )
-    {
-      cpoly_pool_get(i,&x0,&y0);
-      glVertex2f(x0,y0);
-    }
-    glEnd();
-  }
-  else
-  {
-    drawPolygon(1, g_convexpoly0, g_convexpolycount0, 0.0f, 0.0f, C_GREENISH);
     drawPolygon(1, g_convexpoly1, g_convexpolycount1, 0.0f, 0.0f, C_REDISH);	
-    drawPolygon(0, g_convexpoly0, g_convexpolycount0, 0.0f, 0.0f, C_GREENISH);
     drawPolygon(0, g_convexpoly1, g_convexpolycount1, 0.0f, 0.0f, C_REDISH);
-
-    for ( i = 0; i < cpoly_pool_count; ++i )
-    {
-      cpoly_pool_get(i,&x0,&y0);
-      drawCircle(x0, y0, 1.0f, C_GREEN, 0, 0, 16);
-    }
-    glColor4ub(255,0,255,255);    
-    glBegin(GL_POINTS);
-    for ( i = 0; i < g_convexpolycount0; ++i )
-    {
-      x0 = g_convexpoly0[i*2]; y0= g_convexpoly0[i*2+1];
-      if ( cpoly_cv_point_inside(g_convexpoly1,g_convexpolycount1,STRIDE,x0,y0) )
-        glVertex2f(x0,y0);
-    }
-    glEnd();
 
     // cpu transform of polygon g_convexTransform
     for ( i=0; i< g_convexpolycount1; ++i )
     {
-      g_convexTransform[i*2] = g_convexpoly1[i*2]+cos(globalTime*0.5f)*60.0f;
-      g_convexTransform[i*2+1] = g_convexpoly1[i*2+1]+sin(globalTime*2.0f)*10.0f;
+      g_convexTransform[i*2] = g_convexpoly1[i*2]+cosf(globalTime*0.5f)*60.0f;
+      g_convexTransform[i*2+1] = g_convexpoly1[i*2+1]+sinf(globalTime*2.0f)*10.0f;
     }
 
     // coloring if both collide
-    fc = cpoly_cv_intersects_SAT(g_convexpoly1, g_convexpolycount1, STRIDE, g_convexTransform, g_convexpolycount1, -1) ? othc : C_REDISH;
-    drawPolygon(1, g_convexTransform, g_convexpolycount1, 0.0f, 0.0f,fc);
-    drawPolygon(0, g_convexTransform, g_convexpolycount1, 0.0f, 0.0f,fc);
+    if ( cpoly_cv_intersects_SAT(g_convexpoly1, g_convexpolycount1, STRIDE, g_convexTransform, g_convexpolycount1, STRIDE) )
+      fc= othc;
+    else 
+      fc= C_REDISH;
+    drawPolygon(1, g_convexTransform, g_convexpolycount1, 0.0f, 0.0f, fc);
+    drawPolygon(0, g_convexTransform, g_convexpolycount1, 0.0f, 0.0f, fc);
   }
 
   if ( glfwGetKey(window, GLFW_KEY_A)==GLFW_PRESS )
+    cpoly_transform_rotate(g_convexpoly1, g_convexpolycount1, STRIDE, 0.016f, g_convexpoly1pos, g_convexpoly1pos+1);
+  else if ( glfwGetKey(window, GLFW_KEY_Z)==GLFW_PRESS )
+    cpoly_transform_rotate(g_convexpoly1, g_convexpolycount1, STRIDE, -0.016f,NULL,NULL);
+  else if ( glfwGetKey(window, GLFW_KEY_LEFT)==GLFW_PRESS )
   {
-    //cpoly_transform_translate(g_convexpoly1, g_convexpolycount1, STRIDE, 0, 0);
-    cpoly_transform_rotate(g_convexpoly1, g_convexpolycount1, STRIDE, 0.016f,NULL,NULL);
+    g_convexpoly1pos[0]-=0.016f*20.0f;
+    cpoly_transform_translate(g_convexpoly1, g_convexpolycount1, STRIDE, g_convexpoly1pos[0], g_convexpoly1pos[1]);
   }
+  else if ( glfwGetKey(window, GLFW_KEY_RIGHT)==GLFW_PRESS )
+  {
+    g_convexpoly1pos[0]+=0.016f*20.0f;
+    cpoly_transform_translate(g_convexpoly1, g_convexpolycount1, STRIDE, g_convexpoly1pos[0], g_convexpoly1pos[1]);
+  }
+  else if ( glfwGetKey(window, GLFW_KEY_1)==GLFW_PRESS )
+  {
+    cpoly_transform_scale(g_convexpoly1, g_convexpolycount1, STRIDE, 1.01f, 1.01f, g_convexpoly1pos, g_convexpoly1pos+1);
+  }
+  else if ( glfwGetKey(window, GLFW_KEY_2)==GLFW_PRESS )
+  {
+    cpoly_transform_scale(g_convexpoly1, g_convexpolycount1, STRIDE, 1-0.016f, 1-0.016f, g_convexpoly1pos, g_convexpoly1pos+1);
+  }
+
 
   glPointSize(15.0f);
   glColor4ub(255,255,0,255);
@@ -156,17 +134,6 @@ int main()
 	GLFWwindow* window;
 	const GLFWvidmode* mode;
 
-  int v;
-
-  if ( !cpoly_is_convex(g_convexpoly0,g_convexpolycount0,STRIDE) ||
-       !cpoly_is_convex(g_convexpoly1,g_convexpolycount1,STRIDE) )
-  {
-    printf( "Polygons should be convex for this example\n" );
-    exit(EXIT_FAILURE);
-  }
-
-  cpoly_cv_union(g_convexpoly0, g_convexpolycount0, STRIDE, g_convexpoly1, g_convexpolycount1, STRIDE);
-
 	if (!glfwInit())
 		return -1;
 
@@ -178,6 +145,8 @@ int main()
 		glfwTerminate();
 		return -1;
 	}
+
+  cpoly_poly_centroid( g_convexpoly1, g_convexpolycount1, STRIDE, g_convexpoly1pos, g_convexpoly1pos+1);
 
 	glfwSetFramebufferSizeCallback(window, resizecb);
 	glfwMakeContextCurrent(window);

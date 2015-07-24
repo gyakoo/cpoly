@@ -45,7 +45,7 @@ extern "C" {
   // assumes: convex polygons, intersecting, no one inside another, no holes.
   int cpoly_cv_union(void* pts0, int npts0, int stride0, void* pts1, int npts1, int stride1);
 
-  // some basic hom transformation
+  // some basic homogeneous transformation functions
   void cpoly_transform_rotate(void* pts, int npts, int stride, float angle, float* xpivot, float* ypivot);
   void cpoly_transform_scale(void* pts, int npts, int stride, float sx, float sy, float* xpivot, float* ypivot);
   void cpoly_transform_translate(void* pts, int npts, int stride, float x, float y);
@@ -387,7 +387,7 @@ int cpoly_cv_union(void* pts0, int npts0, int stride0, void* pts1, int npts1, in
   int P,v,e,oP;
   float minx=FLT_MAX;
   int minv, minp;
-  float x0,y0,x1,y1,ix,iy,s;
+  float x0,y0,x1,y1,ix,iy;
   int counts[2]={0,0};
   int inside;
   cpoly_bitset bitsets[2];
@@ -457,9 +457,31 @@ void cpoly_transform_rotate(void* pts, int npts, int stride, float anglerad, flo
 {
   int i;
   float x,y;
-  float xp,yp;
+  float xp=0,yp=0;
+  float a, b;
   const float c=cosf(anglerad);
   const float s=sinf(anglerad);
+  
+  if ( !xpivot || !ypivot ) cpoly_poly_centroid(pts,npts,stride,&xp,&yp);
+  if ( xpivot ) xp=*xpivot;
+  if ( ypivot ) yp=*ypivot;
+
+  for (i=0;i<npts;++i)
+  {
+    x=cpoly_getx(pts,stride,i); 
+    y=cpoly_gety(pts,stride,i);
+    a=x-xp; b=y-yp; // translates to origin,
+    x = (a*c+b*s)+xp; y = (b*c-a*s)+yp; //  rotate, back to original pos
+    cpoly_setx(pts,stride,i,x); 
+    cpoly_sety(pts,stride,i,y);
+  }
+}
+
+void cpoly_transform_scale(void* pts, int npts, int stride, float sx, float sy, float* xpivot, float* ypivot)
+{
+  int i;
+  float x,y;
+  float xp=0,yp=0;
   float a, b;
   
   if ( !xpivot || !ypivot ) cpoly_poly_centroid(pts,npts,stride,&xp,&yp);
@@ -470,15 +492,11 @@ void cpoly_transform_rotate(void* pts, int npts, int stride, float anglerad, flo
   {
     x=cpoly_getx(pts,stride,i); 
     y=cpoly_gety(pts,stride,i);
-    a=x-xp; b=y-yp;
-    x = (a*c+b*s)+xp; y = (b*c-a*s)+yp;
+    a=x-xp; b=y-yp; // translates to origin,
+    x = a*sx+xp; y = b*sy+yp; //  rotate, back to original pos
     cpoly_setx(pts,stride,i,x); 
     cpoly_sety(pts,stride,i,y);
   }
-}
-
-void cpoly_transform_scale(void* pts, int npts, int stride, float sx, float sy, float* xpivot, float* ypivot)
-{
 }
 
 void cpoly_transform_translate(void* pts, int npts, int stride, float x, float y)

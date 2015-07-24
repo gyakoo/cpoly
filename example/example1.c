@@ -11,6 +11,8 @@
 #define CPOLY_IMPLEMENTATION
 #include "cpoly.h"
 
+#define EXCOMMON_IMPLEMENTATION
+#include "excommon.h"
 // ortho proj
 const double viewbounds[]={-100, 100, -100, 100, -1, 1};
 
@@ -42,39 +44,6 @@ const int g_convexpolycount0= sizeof(g_convexpoly0)/(sizeof(float)*2);
 int* g_parts=0;
 int* g_psizes=0;
 int g_partscount=0;
-
-
-void drawPolygon(char fill, float* poly, int count, float x, float y)
-{
-  int i;
-
-  glLineWidth(2.0f);
-  glPointSize(5.0f);
-
-  glPushMatrix();
-  glTranslatef(x,y,0.0f);
-  glColor4ub(255,0,0,255);
-  if ( fill )
-  {
-    glBegin(GL_TRIANGLE_FAN);
-    for ( i = 0; i < count; ++i )
-      glVertex2f(poly[i*2], poly[i*2+1]);
-    glEnd();
-  }
-
-  glColor4ub(255,255,255,255);
-  glBegin(GL_LINE_LOOP);
-  for ( i = 0; i < count; ++i )
-    glVertex2f(poly[i*2], poly[i*2+1]);
-  glEnd();
-
-  glColor4ub(255,255,0,255);
-  glBegin(GL_POINTS);
-  for ( i = 0; i < count; ++i )
-    glVertex2f(poly[i*2], poly[i*2+1]);
-  glEnd();
-  glPopMatrix();
-}
 
 void frame(GLFWwindow* window)
 {
