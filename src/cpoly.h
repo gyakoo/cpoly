@@ -462,22 +462,21 @@ void cpoly_transform_rotate(void* pts, int npts, int stride, float anglerad, flo
   const float s=sinf(anglerad);
   float a, b;
   
-  if ( !xpivot || !ypivot )
-  {
-    cpoly_poly_centroid(pts,npts,stride,&xp,&yp);
-    if ( xpivot ) xp=*xpivot;
-    if ( ypivot ) yp=*ypivot;
-  }
-  //a = c*xp + s*yp - xp;
-  //b = c*yp - s*xp - yp;
+  if ( !xpivot || !ypivot ) cpoly_poly_centroid(pts,npts,stride,&xp,&yp);
+  if ( xpivot ) xp=*xpivot;
+  if ( ypivot ) yp=*ypivot;
 
+//   a = c*xp-s*yp-xp;
+//   b = s*xp+c*yp-yp;
   for (i=0;i<npts;++i)
   {
-    x=cpoly_getx(pts,stride,i); y=cpoly_gety(pts,stride,i);
-    //xp = x*c-y*s; yp = x*s-y*c;
-
-    xp = x*c+y*s; yp = -x*s+y*c;
-    cpoly_setx(pts,stride,i,xp); cpoly_sety(pts,stride,i,yp);
+    x=cpoly_getx(pts,stride,i); 
+    y=cpoly_gety(pts,stride,i);
+    //xp = x*c-y*s+a;
+    //yp = x*s+y*c+b;
+    xp = x*c+y*s; yp = y*c-x*s;
+    cpoly_setx(pts,stride,i,xp); 
+    cpoly_sety(pts,stride,i,yp);
   }
 }
 
@@ -487,6 +486,21 @@ void cpoly_transform_scale(void* pts, int npts, int stride, float sx, float sy, 
 
 void cpoly_transform_translate(void* pts, int npts, int stride, float x, float y)
 {
+  int i;
+  float xp,yp;
+  float xc,yc;
+
+  cpoly_poly_centroid(pts,npts,stride,&xc,&yc);
+
+  for (i=0;i<npts;++i)
+  {
+    xp=cpoly_getx(pts,stride,i); 
+    yp=cpoly_gety(pts,stride,i);
+    xp = (xp-xc)+x;
+    yp = (yp-yc)+y;
+    cpoly_setx(pts,stride,i,xp); 
+    cpoly_sety(pts,stride,i,yp);
+  }
 }
 
 void cpoly_poly_centroid(void* pts, int npts, int stride, float* cx, float* cy)

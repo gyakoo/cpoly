@@ -145,7 +145,6 @@ void frame(GLFWwindow* window)
 	// Draw 
   if ( glfwGetKey(window,GLFW_KEY_SPACE)==GLFW_PRESS )
   {
-    printf( "%f\n",dslow);
     cpoly_cv_union(g_convexpoly0, g_convexpolycount0, STRIDE, g_convexpoly1, g_convexpolycount1, STRIDE);
     glBegin(GL_LINE_LOOP);
     for ( i = 0; i < cpoly_pool_count; ++i )
@@ -184,40 +183,23 @@ void frame(GLFWwindow* window)
       g_convexTransform[i*2+1] = g_convexpoly1[i*2+1]+sin(globalTime*2.0f)*10.0f;
     }
 
-    // coloring if intersects
+    // coloring if both collide
     fc = cpoly_cv_intersects_SAT(g_convexpoly1, g_convexpolycount1, STRIDE, g_convexTransform, g_convexpolycount1, -1) ? othc : C_REDISH;
     drawPolygon(1, g_convexTransform, g_convexpolycount1, 0.0f, 0.0f,fc);
     drawPolygon(0, g_convexTransform, g_convexpolycount1, 0.0f, 0.0f,fc);
-
-    // test for line segment intersection
-    glBegin(GL_LINES);
-    for ( i=0; i < g_convexpolycount0; ++i )
-    {
-      glColor4ub(255,255,255,255);
-      x0= g_convexpoly0[i*2]; y0=g_convexpoly0[i*2+1];
-      x1= g_convexpoly0[((i+1)%g_convexpolycount0)*2]; y1=g_convexpoly0[((i+1)%g_convexpolycount0)*2+1];
-      for ( j=0; j < g_convexpolycount1; ++j )
-      {
-        x2= g_convexpoly1[j*2]; y2=g_convexpoly1[j*2+1];
-        x3= g_convexpoly1[((j+1)%g_convexpolycount1)*2]; y3=g_convexpoly1[((j+1)%g_convexpolycount1)*2+1];      
-        if ( cpoly_seg_isec(x0,y0,x1,y1,x2,y2,x3,y3,0) )
-        {
-          glColor4ub(255,0,0,255);
-          //break;
-        }
-      }
-      glVertex2f(x0,y0);
-      glVertex2f(x1,y1);
-    }
-    glEnd();
   }
 
   if ( glfwGetKey(window, GLFW_KEY_A)==GLFW_PRESS )
   {
-    cpoly_transform_rotate(g_convexpoly1, g_convexpolycount1, STRIDE, dslow*0.1f,NULL,NULL);
+    cpoly_transform_translate(g_convexpoly1, g_convexpolycount1, STRIDE, 0, 0);
+    cpoly_transform_rotate(g_convexpoly1, g_convexpolycount1, STRIDE, 0.016f,NULL,NULL);
   }
 
-  
+  glPointSize(15.0f);
+  glColor4ub(255,255,0,255);
+  glBegin(GL_POINTS);
+  glVertex2f(0,0);
+  glEnd();
 
   glfwSwapBuffers(window);
 }
@@ -247,7 +229,6 @@ int main()
     exit(EXIT_FAILURE);
   }
 
-  cpoly_transform_rotate(g_convexpoly1, g_convexpolycount1, STRIDE, 0.059167f,NULL,NULL);
   cpoly_cv_union(g_convexpoly0, g_convexpolycount0, STRIDE, g_convexpoly1, g_convexpolycount1, STRIDE);
 
 	if (!glfwInit())
