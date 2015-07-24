@@ -1,12 +1,15 @@
 /*
-
+Disclaimer:
+THIS IS WORK IN PROGRESS, SOME FUNCTIONS AREN'T FINISHED AND/OR HEAVILY TESTED FOR BEHAVIOR AND PERFORMANCE.
  */
 
 #ifndef CPOLY_H
 #define CPOLY_H
 
 #include <math.h>
-
+#ifdef _DEBUG
+#include <intrin.h>
+#endif
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -57,6 +60,11 @@ extern "C" {
 #endif // CPOLY_H
 
 #ifdef CPOLY_IMPLEMENTATION
+/*
+TODO: 
+  http://jamie-wong.com/2014/08/19/metaballs-and-marching-squares/
+  http://www.dma.fi.upm.es/docencia/trabajosfindecarrera/programas/geometriacomputacional/PiezasConvex/algoritmo_i.html
+*/
 
 #ifndef CPOLY_MAXPOOLSIZE_BYTES 
 #define CPOLY_MAXPOOLSIZE_BYTES (16<<10)
@@ -395,12 +403,19 @@ int cpoly_cv_union(void* pts0, int npts0, int stride0, void* pts1, int npts1, in
     for (v=0;v<npts[P];++v )
     {
       x0 = cpoly_getx(pts[P],stride[P],v); y0 = cpoly_gety(pts[P],stride[P],v);
-      if ( x0<minx ) { minp=P; minv=v; minx=x0; }
-
-      // computes how many points of P are outside of oP
-      // mark flag 1 for those points that are in the overlapping region
+      
+      // computes how many points of P are outside of oP && mark flag 1 for those points that are in the overlapping region
       inside = cpoly_cv_point_inside(pts[oP],npts[oP],stride[oP],x0,y0);
-      if ( !inside ) { ++counts[P]; cpoly_bitset_reset(bitsets[P],v); } else cpoly_bitset_set(bitsets[P],v);
+      if ( !inside ) 
+      { 
+        ++counts[P]; 
+        cpoly_bitset_reset(bitsets[P],v); 
+        if ( x0<minx ) { minp=P; minv=v; minx=x0; }
+      } 
+      else 
+      { 
+        cpoly_bitset_set(bitsets[P],v); 
+      }
     }
   }
 
@@ -410,23 +425,27 @@ int cpoly_cv_union(void* pts0, int npts0, int stride0, void* pts1, int npts1, in
   cpoly_pool_count = 0;
 
   // while still outside points to process for both
-  while ( counts[0] || counts[1] )
+  while ( counts[0]>0 || counts[1]>0 )
   {
     if ( !cpoly_bitset_get(bitsets[P],v) )
     {
       x0 = cpoly_getx(pts[P],stride[P],v); y0 = cpoly_gety(pts[P],stride[P],v);
-      cpoly_pool_add(x0,y0); // adds the first one in the edge
-      --counts[P];
+      cpoly_pool_add(x0,y0); --counts[P]; // adds the first one in the edge
+      cpoly_bitset_set(bitsets[P],v); // marks this vertex as outside, so can't be further processed
       x1 = cpoly_getx(pts[P],stride[P],(v+1)%npts[P]); y1 = cpoly_gety(pts[P],stride[P],(v+1)%npts[P]);
 
       // for this edge, intersects with the any of the other polygon's edge?
       if ( cpoly_cv_seg_isec_poly_closest(x0,y0,x1,y1,pts[oP],npts[oP],stride[oP],&ix,&iy,&e) )
       {
-        cpoly_pool_add(ix,iy);
+        cpoly_pool_add(ix,iy);        
         P=oP; oP=(oP+1)%2; // the other poly
         v=e; //continues with next poly vertex, the end of the edge
       }      
-    }    
+    } 
+    else if ( !counts[P] ) // no more vertices to process in current polygon, jump to the other
+    {
+      P=oP; oP=(oP+1)%2;
+    }
     v = (v+1)%npts[P];
   }
 
@@ -441,22 +460,24 @@ void cpoly_transform_rotate(void* pts, int npts, int stride, float anglerad, flo
   float xp,yp;
   const float c=cosf(anglerad);
   const float s=sinf(anglerad);
-  float hx, hy;
-
+  float a, b;
+  
   if ( !xpivot || !ypivot )
   {
     cpoly_poly_centroid(pts,npts,stride,&xp,&yp);
     if ( xpivot ) xp=*xpivot;
     if ( ypivot ) yp=*ypivot;
   }
+  //a = c*xp + s*yp - xp;
+  //b = c*yp - s*xp - yp;
 
   for (i=0;i<npts;++i)
   {
     x=cpoly_getx(pts,stride,i); y=cpoly_gety(pts,stride,i);
-    x-=xp; y-=yp;
-    x= x*c+y*s; y= -x*s+y*c;
-    x+=xp; y+=yp;
-    cpoly_setx(pts,stride,i,x); cpoly_sety(pts,stride,i,y);
+    //xp = x*c-y*s; yp = x*s-y*c;
+
+    xp = x*c+y*s; yp = -x*s+y*c;
+    cpoly_setx(pts,stride,i,xp); cpoly_sety(pts,stride,i,yp);
   }
 }
 
@@ -474,7 +495,11 @@ void cpoly_poly_centroid(void* pts, int npts, int stride, float* cx, float* cy)
   float ax=0, ay=0;
   float inv;
 
-  for (i=0;i<npts;++i) ax+=cpoly_getx(pts,stride,i); ay=cpoly_gety(pts,stride,i);
+  for (i=0;i<npts;++i) 
+  { 
+    ax+=cpoly_getx(pts,stride,i); 
+    ay+=cpoly_gety(pts,stride,i); 
+  }
   inv= 1.0f / npts;
 
   if ( cx ) *cx = ax*inv;

@@ -119,6 +119,7 @@ void frame(GLFWwindow* window)
   float* fc;
   static float globalTime=0.0f;
   float othc[4]={1,0,10/255.0f,0.3f};
+  float dslow=globalTime*0.01f;
 
   globalTime += 1.0f/60.0f;
 	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
@@ -144,6 +145,8 @@ void frame(GLFWwindow* window)
 	// Draw 
   if ( glfwGetKey(window,GLFW_KEY_SPACE)==GLFW_PRESS )
   {
+    printf( "%f\n",dslow);
+    cpoly_cv_union(g_convexpoly0, g_convexpolycount0, STRIDE, g_convexpoly1, g_convexpolycount1, STRIDE);
     glBegin(GL_LINE_LOOP);
     for ( i = 0; i < cpoly_pool_count; ++i )
     {
@@ -200,13 +203,18 @@ void frame(GLFWwindow* window)
         if ( cpoly_seg_isec(x0,y0,x1,y1,x2,y2,x3,y3,0) )
         {
           glColor4ub(255,0,0,255);
-          break;
+          //break;
         }
       }
       glVertex2f(x0,y0);
       glVertex2f(x1,y1);
     }
     glEnd();
+  }
+
+  if ( glfwGetKey(window, GLFW_KEY_A)==GLFW_PRESS )
+  {
+    cpoly_transform_rotate(g_convexpoly1, g_convexpolycount1, STRIDE, dslow*0.1f,NULL,NULL);
   }
 
   
@@ -239,14 +247,8 @@ int main()
     exit(EXIT_FAILURE);
   }
 
-  cpoly_transform_rotate(g_convexpoly0, g_convexpolycount0, STRIDE, 3.1415f*0.5f,NULL,NULL);
-
-
-//   v = cpoly_cv_union(g_convexpoly0, g_convexpolycount0, STRIDE, g_convexpoly1, g_convexpolycount1, STRIDE);
-//   if ( v )
-//   {
-//     v=cpoly_is_convex(cpoly_pool, cpoly_pool_count,STRIDE);
-//   }
+  cpoly_transform_rotate(g_convexpoly1, g_convexpolycount1, STRIDE, 0.059167f,NULL,NULL);
+  cpoly_cv_union(g_convexpoly0, g_convexpolycount0, STRIDE, g_convexpoly1, g_convexpolycount1, STRIDE);
 
 	if (!glfwInit())
 		return -1;
