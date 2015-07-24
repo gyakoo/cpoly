@@ -507,24 +507,26 @@ void cpoly_poly_centroid(void* pts, int npts, int stride, float* cx, float* cy)
 int cpoly_convex_hull(void* pts, int npts, int stride)
 {
   int i, endp;
-  int minv, v;
+  int initv, v;
   float minx=FLT_MAX;
   float x0,y0,x1,y1,x2,y2;
-  float z;
-  cpoly_bitset cv;
 
   if ( npts <= 2 ) return 0;
+
+  // init
+  cpoly_pool_count=0;
 
   // picks up the leftmost to start with
   for (i=0;i<npts;++i)
   {
     x0=cpoly_getx(pts,stride,i); 
-    if ( x0<minx ){ minx=x0; minv=i; }
+    if ( x0<minx ){ minx=x0; initv=i; }
   }
   
-  v = endp = minv;
+  v = endp = initv;
   do
   {
+    v=endp;
     cpoly_pool_add_index(v); // add this vertex to CH
     cpoly_getxy(pts,stride,v,x0,y0);
 
@@ -534,14 +536,14 @@ int cpoly_convex_hull(void* pts, int npts, int stride)
     for (i=1;i<npts;++i)
     {
       cpoly_getxy(pts,stride,i,x2,y2);
-      if ( endp==v || cpoly_zcross(x0,y0,x1,y1,x2,y2) > 0.0f ) // on the left side
+      if ( endp==v || cpoly_zcross(x0,y0,x1,y1,x2,y2) > 0.0f )
       {
+        // start and end points are the same, advance to next || it's on the left of edge
         endp=i;
+        cpoly_getxy(pts,stride,endp,x1,y1);
       }
     }
-    if ( v==endp ) break;
-    v=endp;
-  }while (1);
+  }while (initv!=endp);
 
   return cpoly_pool_count;
 }
