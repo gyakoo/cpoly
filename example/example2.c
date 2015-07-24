@@ -41,6 +41,20 @@ float g_convexpoly1[] ={
   -5.0f, -10.0f // 7
 };
 const int g_convexpolycount1= sizeof(g_convexpoly1)/(sizeof(float)*2);
+
+float g_poly[] = 
+{
+  -10.0f  , 35.0f,  // 0
+  0.0f    , 40.0f,   // 1
+  10.0f   , 5.0f,  // 2
+  20.0f   , 10.0f,  // 3
+  15.0f   , -10.0f, // 4
+  0.0f   , 0.0f, // 5
+  -20.0f   , -25.0f, // 6
+  -5.0f  , 10.0f // 7
+};
+const int g_polycount= sizeof(g_poly)/(sizeof(float)*2);
+
 float g_convexTransform[sizeof(g_convexpoly1)]={0};
 float C_REDISH[4]={50/255.0f,0,10/255.0f,0.5f};
 float C_GREENISH[4]={0,50/255.0f,10/255.0f,1};
@@ -85,8 +99,25 @@ void frame(GLFWwindow* window)
     glBegin(GL_LINE_LOOP);
     for ( i = 0; i < cpoly_pool_count; ++i )
     {
-      cpoly_pool_get(i,&x0,&y0);
+      cpoly_pool_get_vertex(i,&x0,&y0);
       glVertex2f(x0,y0);
+    }
+    glEnd();
+  }
+  else if ( glfwGetKey(window,GLFW_KEY_BACKSPACE)==GLFW_PRESS )
+  {
+    glBegin(GL_LINE_LOOP);
+    for ( i = 0; i < g_polycount; ++i )
+      glVertex2f( g_poly[i*2], g_poly[i*2+1]);
+    glEnd();
+
+    cpoly_convex_hull(g_poly, g_polycount,STRIDE);
+    glColor4ub(0,255,0,255);
+    glBegin(GL_LINE_LOOP);
+    for ( i=0; i < cpoly_pool_count; ++i )
+    {
+      j = cpoly_pool_get_index(i);
+      glVertex2f( g_poly[j*2], g_poly[j*2+1] );
     }
     glEnd();
   }
@@ -99,7 +130,7 @@ void frame(GLFWwindow* window)
 
     for ( i = 0; i < cpoly_pool_count; ++i )
     {
-      cpoly_pool_get(i,&x0,&y0);
+      cpoly_pool_get_vertex(i,&x0,&y0);
       drawCircle(x0, y0, 1.0f, C_GREEN, 0, 0, 16);
     }
     glColor4ub(255,0,255,255);    
@@ -166,6 +197,8 @@ int main()
   }
 
   cpoly_cv_union(g_convexpoly0, g_convexpolycount0, STRIDE, g_convexpoly1, g_convexpolycount1, STRIDE);
+
+  cpoly_transform_scale(g_poly, g_polycount, STRIDE, 1.5f, 1.5f,0,0);
 
 	if (!glfwInit())
 		return -1;

@@ -48,6 +48,7 @@ int g_partscount=0;
 void frame(GLFWwindow* window)
 {
 	int width = 0, height = 0;
+  float rgba[]={1,1,1,1};
 
 	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 	glfwGetFramebufferSize(window, &width, &height);
@@ -70,11 +71,11 @@ void frame(GLFWwindow* window)
 	glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
 
 	// Draw bounds
-  drawPolygon(1, g_polygon, g_polycount, -40.0f, 40.0f);
-  drawPolygon(0, g_polygon, g_polycount, +40.0f, 40.0f);	
+  drawPolygon(1, g_polygon, g_polycount, -40.0f, 40.0f, rgba);
+  drawPolygon(0, g_polygon, g_polycount, +40.0f, 40.0f, rgba);	
 
-  drawPolygon(1, g_convexpoly0, g_convexpolycount0, -40.0f, -40.0f);
-  drawPolygon(0, g_convexpoly0, g_convexpolycount0, +40.0f, -40.0f);	
+  drawPolygon(1, g_convexpoly0, g_convexpolycount0, -40.0f, -40.0f, rgba);
+  drawPolygon(0, g_convexpoly0, g_convexpolycount0, +40.0f, -40.0f, rgba);	
 
 	glfwSwapBuffers(window);
 }
@@ -97,8 +98,6 @@ int main()
 	const GLFWvidmode* mode;
 
   cpoly_is_convex(g_convexpoly0,g_convexpolycount0,sizeof(float)*2);
-
-  g_partscount = cpoly_cv_partitioning_cw( g_polygon, g_polycount, sizeof(float)*2, &g_parts, &g_psizes);
 
 	if (!glfwInit())
 		return -1;
@@ -125,8 +124,6 @@ int main()
 		frame(window);
 		glfwPollEvents();
 	}
-
-  cpoly_free_parts(&g_parts, &g_psizes);
 
 	glfwTerminate();
 	return 0;
