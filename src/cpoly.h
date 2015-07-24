@@ -38,10 +38,17 @@ extern "C" {
   // returns 1 if segment intersects polygon
   int cpoly_cv_seg_isec_poly_first(float x0, float y0, float x1, float y1, void* pts, int npts, int stride, float* ix, float* iy, int* edge);
 
-
   // union of convex polygons
   // assumes: convex polygons, intersecting, no one inside another, no holes.
   int cpoly_cv_union(void* pts0, int npts0, int stride0, void* pts1, int npts1, int stride1);
+
+  // some basic hom transformation
+  void cpoly_transform_rotate(void* pts, int npts, int stride, float angle, float* xpivot, float* ypivot);
+  void cpoly_transform_scale(void* pts, int npts, int stride, float sx, float sy, float* xpivot, float* ypivot);
+  void cpoly_transform_translate(void* pts, int npts, int stride, float x, float y);
+
+  // geometric center computation (center of mass or centroid)
+  void cpoly_poly_centroid(void* pts, int npts, int stride, float* cx, float* cy);
 
 #ifdef __cplusplus
 };
@@ -61,11 +68,11 @@ extern "C" {
 #endif
 
 #ifndef CPOLY_MAXBITSET_BYTES
-#define CPOLY_MAXBITSET_BYTES (256)
+#define CPOLY_MAXBITSET_BYTES (128)
 #else
 #if CPOLY_MAXBITSET_BYTES <= 8
 #undef CPOLY_MAXBITSET_BYTES
-#define CPOLY_MAXBITSET_BYTES (256)
+#define CPOLY_MAXBITSET_BYTES (128)
 #endif
 #endif
 
@@ -88,11 +95,12 @@ const int cpoly_bitset_maxbits = CPOLY_MAXBITSET_BYTES*8;
 // NEGATIVE is to the eye (CW) POSITIVE is towards the screen (CCW)
 #define cpoly_zcross(x0,y0, x1, y1, x2, y2) ((x1-x0)*(y2-y1) - (y1-y0)*(x2-x1))
 
-// returns x from a stream of floats (pointer, stride, index)
-#define cpoly_getx(p,s,n) * (    (float*)( (char*)(p) + ((s)*(n)) ) )
+// returns xy from a stream of floats (pointer, stride, index)
+#define cpoly_getx(p,s,n) (*(    (float*)( (char*)(p) + ((s)*(n)) ) ))
+#define cpoly_gety(p,s,n) (*(    (float*)( (char*)(p) + ((s)*(n)+sizeof(float)) ) ))
 
-// returns y from a stream of floats (considering y consecutive to x) (pointer, stride, index)
-#define cpoly_gety(p,s,n) * (    (float*)( (char*)(p) + ((s)*(n)+sizeof(float)) ) )
+#define cpoly_setx(p,s,n,f) cpoly_getx(p,s,n)=f
+#define cpoly_sety(p,s,n,f) cpoly_gety(p,s,n)=f
 
 
 int cpoly_cv_partitioning_cw(void* pts, int npts, int stride, int** partndxs, int** poffsets)
@@ -329,9 +337,15 @@ int cpoly_cv_seg_isec_poly_first(float x0, float y0, float x1, float y1, void* p
 
 void cpoly_pool_add(float x, float y)
 {
-  float* ptr = (float*)( cpoly_pool+cpoly_pool_count*sizeof(float));
+  float* ptr = (float*)( cpoly_pool+cpoly_pool_count*sizeof(float)*2);
   *(ptr++) = x; *ptr = y;
   ++cpoly_pool_count;
+}
+
+void cpoly_pool_get(int n, float* x, float* y)
+{
+  float* ptr = (float*)( cpoly_pool+n*sizeof(float)*2);
+  *x=*(ptr++); *y=*ptr;
 }
 
 void cpoly_bitset_reset(cpoly_bitset bs, int n)
@@ -350,7 +364,13 @@ int cpoly_bitset_get(cpoly_bitset bs, int n)
   return (bs[n>>3] & (1<<nmod8)) >> nmod8;
 }
 
-// assumes: convex polygons, intersecting, no one inside another, no holes.
+void cpoly_bitset_allzero(cpoly_bitset bs)
+{
+  int i;
+  for (i=0;i<CPOLY_MAXBITSET_BYTES;++i) bs[i]=0;
+}
+
+// assumes: convex polygons, no one inside another, no holes.
 int cpoly_cv_union(void* pts0, int npts0, int stride0, void* pts1, int npts1, int stride1)
 {
   const int npts[2]={npts0,npts1};
@@ -361,42 +381,104 @@ int cpoly_cv_union(void* pts0, int npts0, int stride0, void* pts1, int npts1, in
   int minv, minp;
   float x0,y0,x1,y1,ix,iy,s;
   int counts[2]={0,0};
+  int inside;
   cpoly_bitset bitsets[2];
 
+  // some more checks here
   if (stride1<=0) stride1=stride0;
+  if (npts0>=cpoly_bitset_maxbits || npts1>=cpoly_bitset_maxbits) return 0;
   
   // pick start vertex out of two polygons (can be the one with min X if we use a straight Vertical sweep line)
   for (P=0;P<2;++P)
   {
+    oP = (P+1)%2;
     for (v=0;v<npts[P];++v )
     {
       x0 = cpoly_getx(pts[P],stride[P],v); y0 = cpoly_gety(pts[P],stride[P],v);
       if ( x0<minx ) { minp=P; minv=v; minx=x0; }
 
-      // computes how many points for each polygon are outside the intersection region
-      if ( !cpoly_cv_point_inside(pts[P],npts[P],stride[P],x0,y0) ) // hm? expensive but necessary?
-        ++counts[P];
+      // computes how many points of P are outside of oP
+      // mark flag 1 for those points that are in the overlapping region
+      inside = cpoly_cv_point_inside(pts[oP],npts[oP],stride[oP],x0,y0);
+      if ( !inside ) { ++counts[P]; cpoly_bitset_reset(bitsets[P],v); } else cpoly_bitset_set(bitsets[P],v);
     }
   }
 
+  if ( counts[0]==npts[0] && counts[1]==npts[1] ) return 0; // no overlap
   // start with that min vertex
   v = minv; P = minp; oP=(P+1)%2;
   cpoly_pool_count = 0;
 
   // while still outside points to process for both
-  while ( counts[0] && counts[1] )
+  while ( counts[0] || counts[1] )
   {
-    x0 = cpoly_getx(pts[P],stride[P],v); y0 = cpoly_gety(pts[P],stride[P],v);
-    x1 = cpoly_getx(pts[P],stride[P],(v+1)%npts[P]); y1 = cpoly_gety(pts[P],stride[P],(v+1)%npts[P]);
-    // for this edge, intersects with the any of the other polygon's edge?
-    if ( cpoly_cv_seg_isec_poly_closest(x0,y0,x1,y1,pts[oP],npts[oP],stride[oP],&ix,&iy,&e) )
+    if ( !cpoly_bitset_get(bitsets[P],v) )
     {
-      v=e; //continues with next 
-      P=oP; oP=(oP+1)%2; // the other poly
-    }
+      x0 = cpoly_getx(pts[P],stride[P],v); y0 = cpoly_gety(pts[P],stride[P],v);
+      cpoly_pool_add(x0,y0); // adds the first one in the edge
+      --counts[P];
+      x1 = cpoly_getx(pts[P],stride[P],(v+1)%npts[P]); y1 = cpoly_gety(pts[P],stride[P],(v+1)%npts[P]);
+
+      // for this edge, intersects with the any of the other polygon's edge?
+      if ( cpoly_cv_seg_isec_poly_closest(x0,y0,x1,y1,pts[oP],npts[oP],stride[oP],&ix,&iy,&e) )
+      {
+        cpoly_pool_add(ix,iy);
+        P=oP; oP=(oP+1)%2; // the other poly
+        v=e; //continues with next poly vertex, the end of the edge
+      }      
+    }    
+    v = (v+1)%npts[P];
   }
 
-  return 0;
+  return cpoly_pool_count;
+}
+
+// some basic hom transformation
+void cpoly_transform_rotate(void* pts, int npts, int stride, float anglerad, float* xpivot, float* ypivot)
+{
+  int i;
+  float x,y;
+  float xp,yp;
+  const float c=cosf(anglerad);
+  const float s=sinf(anglerad);
+  float hx, hy;
+
+  if ( !xpivot || !ypivot )
+  {
+    cpoly_poly_centroid(pts,npts,stride,&xp,&yp);
+    if ( xpivot ) xp=*xpivot;
+    if ( ypivot ) yp=*ypivot;
+  }
+
+  for (i=0;i<npts;++i)
+  {
+    x=cpoly_getx(pts,stride,i); y=cpoly_gety(pts,stride,i);
+    x-=xp; y-=yp;
+    x= x*c+y*s; y= -x*s+y*c;
+    x+=xp; y+=yp;
+    cpoly_setx(pts,stride,i,x); cpoly_sety(pts,stride,i,y);
+  }
+}
+
+void cpoly_transform_scale(void* pts, int npts, int stride, float sx, float sy, float* xpivot, float* ypivot)
+{
+}
+
+void cpoly_transform_translate(void* pts, int npts, int stride, float x, float y)
+{
+}
+
+void cpoly_poly_centroid(void* pts, int npts, int stride, float* cx, float* cy)
+{
+  int i;
+  float ax=0, ay=0;
+  float inv;
+
+  for (i=0;i<npts;++i) ax+=cpoly_getx(pts,stride,i); ay=cpoly_gety(pts,stride,i);
+  inv= 1.0f / npts;
+
+  if ( cx ) *cx = ax*inv;
+  if ( cy ) *cy = ay*inv;
 }
 
 
