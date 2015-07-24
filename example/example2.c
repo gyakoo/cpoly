@@ -191,7 +191,7 @@ void frame(GLFWwindow* window)
 
   if ( glfwGetKey(window, GLFW_KEY_A)==GLFW_PRESS )
   {
-    cpoly_transform_translate(g_convexpoly1, g_convexpolycount1, STRIDE, 0, 0);
+    //cpoly_transform_translate(g_convexpoly1, g_convexpolycount1, STRIDE, 0, 0);
     cpoly_transform_rotate(g_convexpoly1, g_convexpolycount1, STRIDE, 0.016f,NULL,NULL);
   }
 

@@ -466,17 +466,14 @@ void cpoly_transform_rotate(void* pts, int npts, int stride, float anglerad, flo
   if ( xpivot ) xp=*xpivot;
   if ( ypivot ) yp=*ypivot;
 
-//   a = c*xp-s*yp-xp;
-//   b = s*xp+c*yp-yp;
   for (i=0;i<npts;++i)
   {
     x=cpoly_getx(pts,stride,i); 
     y=cpoly_gety(pts,stride,i);
-    //xp = x*c-y*s+a;
-    //yp = x*s+y*c+b;
-    xp = x*c+y*s; yp = y*c-x*s;
-    cpoly_setx(pts,stride,i,xp); 
-    cpoly_sety(pts,stride,i,yp);
+    a=x-xp; b=y-yp;
+    x = (a*c+b*s)+xp; y = (b*c-a*s)+yp;
+    cpoly_setx(pts,stride,i,x); 
+    cpoly_sety(pts,stride,i,y);
   }
 }
 
