@@ -248,13 +248,14 @@ int cpoly_cv_intersects_SAT(void* pts0, int npts0, int stride0, void* pts1, int 
 }
 
 
-int cpoly_seg_isec(float x0, float y0, float x1, float y1, float x2, float y2, float x3, float y3, float* is)
+int cpoly_seg_isec(float x0, float y0, float x1, float y1, float x2, float y2, float x3, float y3, float* it)
 {
-  const float a=x2-x0; const float b=x3-x2;
-  const float c=x1-x0; const float d=y3-y2;
-  const float e=y2-y0; const float f=y1-y0;
-  const float t =  (c*e - a*f) / (b*f - d*c);
-  const float s = (1.0f/c)*( t*b + a);
+  const float a=x2-x0; const float b=x1-x0;
+  const float c=x3-x2; const float d=y1-y0;
+  const float e=y3-y2; const float f=y2-y0;
+  const float inv = 1.0f/(c*d-e*b);
+  const float t = (f*c-a*e)*inv;
+  const float s = (f*b-a*d)*inv;
 
   // if are indeterminate, they're collinear
   // if are infinite, they're parallel
@@ -262,10 +263,29 @@ int cpoly_seg_isec(float x0, float y0, float x1, float y1, float x2, float y2, f
   // segments, so they'd be in the range
   if ( s>=0.0f && s<=1.0f && t>=0.0f && t<=1.0f )
   {
-    if ( is ) *is= s;
+    if ( it ) *it= t;
     return 1;
   }  
   return 0;
+
+
+
+//   const float a=x2-x0; const float b=x3-x2;
+//   const float c=x1-x0; const float d=y3-y2;
+//   const float e=y2-y0; const float f=y1-y0;
+//   const float t =  (c*e - a*f) / (b*f - d*c);
+//   const float s = (1.0f/c)*( t*b + a);
+// 
+//   // if are indeterminate, they're collinear
+//   // if are infinite, they're parallel
+//   // in both cases no inters and will return 0
+//   // segments, so they'd be in the range
+//   if ( s>=0.0f && s<=1.0f && t>=0.0f && t<=1.0f )
+//   {
+//     if ( is ) *is= s;
+//     return 1;
+//   }  
+//   return 0;
 }
 
 
@@ -469,7 +489,7 @@ int cpoly_cv_diff(void* pts0, int npts0, int stride0, void* pts1, int npts1, int
   if ( counts[0]==npts[0] || counts[1]==0 ) return 0; // no overlap
    
   // start with that min vertex from P0. In poly0, we go CW, in poly1 we go CCW
-  v = minv; nextv=1; P=0; oP=1; 
+  v = minv; nextv=(v+1)%npts[0]; P=0; oP=1; 
   cpoly_pool_count = 0;
  
   // while still outside points from P0 and inside points from P1

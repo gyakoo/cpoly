@@ -165,14 +165,29 @@ void frame(GLFWwindow* window)
 
   if ( glfwGetKey(window, GLFW_KEY_A)==GLFW_PRESS )
   {
-    //cpoly_transform_translate(g_convexpoly1, g_convexpolycount1, STRIDE, 0, 0);
     cpoly_transform_rotate(g_convexpoly1, g_convexpolycount1, STRIDE, 0.016f,NULL,NULL);
+  }
+  else if ( glfwGetKey(window, GLFW_KEY_Z)==GLFW_PRESS )
+  {
+    cpoly_transform_rotate(g_convexpoly1, g_convexpolycount1, STRIDE, -0.016f,NULL,NULL);
   }
 
   if ( glfwGetKey(window, GLFW_KEY_LEFT)==GLFW_PRESS )
   {
-    g_pos1[0] -= 1.16f;
-    cpoly_transform_translate(g_convexpoly1, g_convexpolycount1, STRIDE, g_pos1[0], g_pos1[1]);
+    g_pos1[0] -= 1.16f; cpoly_transform_translate(g_convexpoly1, g_convexpolycount1, STRIDE, g_pos1[0], g_pos1[1]);
+  }
+  else if ( glfwGetKey(window, GLFW_KEY_RIGHT)==GLFW_PRESS )
+  {
+    g_pos1[0] += 1.16f; cpoly_transform_translate(g_convexpoly1, g_convexpolycount1, STRIDE, g_pos1[0], g_pos1[1]);
+  }
+
+  if ( glfwGetKey(window, GLFW_KEY_UP)==GLFW_PRESS )
+  {
+    g_pos1[1] += 1.16f; cpoly_transform_translate(g_convexpoly1, g_convexpolycount1, STRIDE, g_pos1[0], g_pos1[1]);
+  }
+  else if ( glfwGetKey(window, GLFW_KEY_DOWN)==GLFW_PRESS )
+  {
+    g_pos1[1] -= 1.16f; cpoly_transform_translate(g_convexpoly1, g_convexpolycount1, STRIDE, g_pos1[0], g_pos1[1]);
   }
 
   glPointSize(15.0f);
