@@ -6,13 +6,7 @@ Sample in OpenGL provided, which depends on GLFW (included and also in https://g
 Algorithms are not optimized enough or ready for production quality code. Work on them is ongoing.
 
 ```c++
-  // Partition a polygon into a set of convex polygons (ClockWise)
-  int cpoly_cv_partitioning_cw(void* pts, int npts, int stride, int** partndxs, int** poffsets);
-  
-  // Deallocates memory previously allocated by cpoly_decomp* functions
-  void cpoly_free_parts(int** parts, int** psizes);
-
-  // Returns 0 if it's not convex. 1 for CW for CCW
+    // Returns 0 if it's not convex. 1 for CW for CCW
   int cpoly_is_convex(void* pts, int npts, int stride);
 
   // Returns 1 if the point is inside a convex polygon
@@ -33,7 +27,21 @@ Algorithms are not optimized enough or ready for production quality code. Work o
   // returns 1 if segment intersects polygon
   int cpoly_cv_seg_isec_poly_first(float x0, float y0, float x1, float y1, void* pts, int npts, int stride, float* ix, float* iy, int* edge);
 
-  // union of convex polygons
+  // Union of convex polygons. Returns no. of vertices to be accessed with cpoly_pool_get_vertex
   // assumes: convex polygons, intersecting, no one inside another, no holes.
   int cpoly_cv_union(void* pts0, int npts0, int stride0, void* pts1, int npts1, int stride1);
+  
+  // Difference of convex polygons, returns no. of vertices to be accessed with cpoly_pool_get_vertex
+  int cpoly_cv_diff(void* pts0, int npts0, int stride0, void* pts1, int npts1, int stride1);
+
+  // some basic homogeneous transformation functions
+  void cpoly_transform_rotate(void* pts, int npts, int stride, float angle, float* xpivot, float* ypivot);
+  void cpoly_transform_scale(void* pts, int npts, int stride, float sx, float sy, float* xpivot, float* ypivot);
+  void cpoly_transform_translate(void* pts, int npts, int stride, float x, float y);
+
+  // geometric center computation (center of mass or centroid)
+  void cpoly_poly_centroid(void* pts, int npts, int stride, float* cx, float* cy);
+
+  // computes convex hull of a polygon. Returns no of indices to vertices in original polygon, use cpoly_pool_get_index
+  int cpoly_convex_hull(void* pts, int npts, int stride);
 ``` 
