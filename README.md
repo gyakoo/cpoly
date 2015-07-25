@@ -6,7 +6,7 @@ Sample in OpenGL provided, which depends on GLFW (included and also in https://g
 Algorithms are work in progress, aka not optimized enough or production quality code.
 
 ```c++
-    // Returns 0 if it's not convex. 1 for CW for CCW
+    // Returns 0 if it's not convex. 1 for convex-CW 2 for convex-CCW
   int cpoly_is_convex(void* pts, int npts, int stride);
 
   // Returns 1 if the point is inside a convex polygon
