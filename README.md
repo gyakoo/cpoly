@@ -3,7 +3,7 @@ Testing some algorithms with polygons.<br/>
 Sample in OpenGL provided, which depends on GLFW (included and also in https://github.com/glfw/glfw).
 
 # Some operations
-Algorithms are not optimized enough or ready for production quality code. Work on them is ongoing.
+Algorithms are work in progress, aka not optimized enough or production quality code.
 
 ```c++
     // Returns 0 if it's not convex. 1 for CW for CCW
