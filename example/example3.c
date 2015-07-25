@@ -92,12 +92,12 @@ void frame(GLFWwindow* window)
   else if ( glfwGetKey(window, GLFW_KEY_LEFT)==GLFW_PRESS )
   {
     g_convexpoly1pos[0]-=0.016f*20.0f;
-    cpoly_transform_translate(g_convexpoly1, g_convexpolycount1, STRIDE, g_convexpoly1pos[0], g_convexpoly1pos[1]);
+    cpoly_transform_translate(g_convexpoly1, g_convexpolycount1, STRIDE, g_convexpoly1pos[0], g_convexpoly1pos[1], NULL, NULL);
   }
   else if ( glfwGetKey(window, GLFW_KEY_RIGHT)==GLFW_PRESS )
   {
     g_convexpoly1pos[0]+=0.016f*20.0f;
-    cpoly_transform_translate(g_convexpoly1, g_convexpolycount1, STRIDE, g_convexpoly1pos[0], g_convexpoly1pos[1]);
+    cpoly_transform_translate(g_convexpoly1, g_convexpolycount1, STRIDE, g_convexpoly1pos[0], g_convexpoly1pos[1], NULL, NULL);
   }
   else if ( glfwGetKey(window, GLFW_KEY_1)==GLFW_PRESS )
   {

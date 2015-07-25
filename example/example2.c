@@ -65,7 +65,7 @@ void frame(GLFWwindow* window)
 	int width = 0, height = 0;
   float x0,y0,x1,y1,x2,y2,x3,y3;
   float a,step;
-  int i,j;
+  int i,j,k;
   float* fc;
   static float globalTime=0.0f;
   float othc[4]={1,0,10/255.0f,0.3f};
@@ -97,12 +97,24 @@ void frame(GLFWwindow* window)
   {
     cpoly_cv_union(g_convexpoly0, g_convexpolycount0, STRIDE, g_convexpoly1, g_convexpolycount1, STRIDE);
     glBegin(GL_LINE_LOOP);
-    for ( i = 0; i < cpoly_pool_count; ++i )
+    for ( i = 0; i < cpoly_pool_vcount; ++i )
     {
       cpoly_pool_get_vertex(i,&x0,&y0);
       glVertex2f(x0,y0);
     }
     glEnd();
+
+    cpoly_convex_hull(cpoly_pool_v, cpoly_pool_vcount,STRIDE);
+    glColor4ub(0,255,0,255);
+    glBegin(GL_LINE_LOOP);
+    for ( i=0; i < cpoly_pool_icount; ++i )
+    {
+      j = cpoly_pool_get_index(i);
+      cpoly_pool_get_vertex(j,&x0,&y0);
+      glVertex2f( x0,y0 );
+    }
+    glEnd();
+
   }
   else if ( glfwGetKey(window,GLFW_KEY_BACKSPACE)==GLFW_PRESS )
   {
@@ -114,7 +126,7 @@ void frame(GLFWwindow* window)
     cpoly_convex_hull(g_poly, g_polycount,STRIDE);
     glColor4ub(0,255,0,255);
     glBegin(GL_LINE_LOOP);
-    for ( i=0; i < cpoly_pool_count; ++i )
+    for ( i=0; i < cpoly_pool_icount; ++i )
     {
       j = cpoly_pool_get_index(i);
       glVertex2f( g_poly[j*2], g_poly[j*2+1] );
@@ -124,14 +136,30 @@ void frame(GLFWwindow* window)
   }
   else if ( glfwGetKey(window,GLFW_KEY_1)==GLFW_PRESS )
   {
-    cpoly_cv_diff(g_convexpoly0,g_convexpolycount0, STRIDE, g_convexpoly1, g_convexpolycount1, STRIDE);
-    glBegin(GL_LINE_LOOP);
-    for ( i = 0; i < cpoly_pool_count; ++i )
+    cpoly_cv_diff(g_convexpoly0,g_convexpolycount0, STRIDE, g_convexpoly1, g_convexpolycount1, STRIDE);    
+    k=0;
+    for ( i = 0; i < cpoly_pool_icount; ++i ) // for all parts
     {
-      cpoly_pool_get_vertex(i,&x0,&y0);
-      glVertex2f( x0, y0);
+      glBegin(GL_LINE_LOOP);
+      for ( j=k; j<cpoly_pool_get_index(i); ++j )
+      {
+          cpoly_pool_get_vertex(j,&x0,&y0);
+          glVertex2f( x0, y0);
+      }
+      glEnd();
+      k=j;
     }
-    glEnd();
+
+//     cpoly_convex_hull(cpoly_pool_v, cpoly_pool_vcount,STRIDE);
+//     glColor4ub(0,255,0,255);
+//     glBegin(GL_LINE_LOOP);
+//     for ( i=0; i < cpoly_pool_icount; ++i )
+//     {
+//       j = cpoly_pool_get_index(i);
+//       cpoly_pool_get_vertex(j,&x0,&y0);
+//       glVertex2f( x0,y0 );
+//     }
+//     glEnd();
   }
   else
   {
@@ -174,20 +202,20 @@ void frame(GLFWwindow* window)
 
   if ( glfwGetKey(window, GLFW_KEY_LEFT)==GLFW_PRESS )
   {
-    g_pos1[0] -= 1.16f; cpoly_transform_translate(g_convexpoly1, g_convexpolycount1, STRIDE, g_pos1[0], g_pos1[1]);
+    g_pos1[0] -= 1.16f; cpoly_transform_translate(g_convexpoly1, g_convexpolycount1, STRIDE, g_pos1[0], g_pos1[1], NULL, NULL);
   }
   else if ( glfwGetKey(window, GLFW_KEY_RIGHT)==GLFW_PRESS )
   {
-    g_pos1[0] += 1.16f; cpoly_transform_translate(g_convexpoly1, g_convexpolycount1, STRIDE, g_pos1[0], g_pos1[1]);
+    g_pos1[0] += 1.16f; cpoly_transform_translate(g_convexpoly1, g_convexpolycount1, STRIDE, g_pos1[0], g_pos1[1], NULL, NULL);
   }
 
   if ( glfwGetKey(window, GLFW_KEY_UP)==GLFW_PRESS )
   {
-    g_pos1[1] += 1.16f; cpoly_transform_translate(g_convexpoly1, g_convexpolycount1, STRIDE, g_pos1[0], g_pos1[1]);
+    g_pos1[1] += 1.16f; cpoly_transform_translate(g_convexpoly1, g_convexpolycount1, STRIDE, g_pos1[0], g_pos1[1], NULL, NULL);
   }
   else if ( glfwGetKey(window, GLFW_KEY_DOWN)==GLFW_PRESS )
   {
-    g_pos1[1] -= 1.16f; cpoly_transform_translate(g_convexpoly1, g_convexpolycount1, STRIDE, g_pos1[0], g_pos1[1]);
+    g_pos1[1] -= 1.16f; cpoly_transform_translate(g_convexpoly1, g_convexpolycount1, STRIDE, g_pos1[0], g_pos1[1], NULL, NULL);
   }
 
   glPointSize(15.0f);
