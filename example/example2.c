@@ -41,7 +41,7 @@ float g_convexpoly1[] ={
   -5.0f, -10.0f // 7
 };
 const int g_convexpolycount1= sizeof(g_convexpoly1)/(sizeof(float)*2);
-
+float g_pos1[2];
 float g_poly[] = 
 {
   -10.0f  , 35.0f,  // 0
@@ -120,6 +120,18 @@ void frame(GLFWwindow* window)
       glVertex2f( g_poly[j*2], g_poly[j*2+1] );
     }
     glEnd();
+
+  }
+  else if ( glfwGetKey(window,GLFW_KEY_1)==GLFW_PRESS )
+  {
+    cpoly_cv_diff(g_convexpoly0,g_convexpolycount0, STRIDE, g_convexpoly1, g_convexpolycount1, STRIDE);
+    glBegin(GL_LINE_LOOP);
+    for ( i = 0; i < cpoly_pool_count; ++i )
+    {
+      cpoly_pool_get_vertex(i,&x0,&y0);
+      glVertex2f( x0, y0);
+    }
+    glEnd();
   }
   else
   {
@@ -128,11 +140,6 @@ void frame(GLFWwindow* window)
     drawPolygon(0, g_convexpoly0, g_convexpolycount0, 0.0f, 0.0f, C_GREENISH);
     drawPolygon(0, g_convexpoly1, g_convexpolycount1, 0.0f, 0.0f, C_REDISH);
 
-    for ( i = 0; i < cpoly_pool_count; ++i )
-    {
-      cpoly_pool_get_vertex(i,&x0,&y0);
-      drawCircle(x0, y0, 1.0f, C_GREEN, 0, 0, 16);
-    }
     glColor4ub(255,0,255,255);    
     glBegin(GL_POINTS);
     for ( i = 0; i < g_convexpolycount0; ++i )
@@ -144,22 +151,28 @@ void frame(GLFWwindow* window)
     glEnd();
 
     // cpu transform of polygon g_convexTransform
-    for ( i=0; i< g_convexpolycount1; ++i )
-    {
-      g_convexTransform[i*2] = g_convexpoly1[i*2]+cos(globalTime*0.5f)*60.0f;
-      g_convexTransform[i*2+1] = g_convexpoly1[i*2+1]+sin(globalTime*2.0f)*10.0f;
-    }
-
-    // coloring if both collide
-    fc = cpoly_cv_intersects_SAT(g_convexpoly1, g_convexpolycount1, STRIDE, g_convexTransform, g_convexpolycount1, -1) ? othc : C_REDISH;
-    drawPolygon(1, g_convexTransform, g_convexpolycount1, 0.0f, 0.0f,fc);
-    drawPolygon(0, g_convexTransform, g_convexpolycount1, 0.0f, 0.0f,fc);
+//     for ( i=0; i< g_convexpolycount1; ++i )
+//     {
+//       g_convexTransform[i*2] = g_convexpoly1[i*2]+cos(globalTime*0.5f)*60.0f;
+//       g_convexTransform[i*2+1] = g_convexpoly1[i*2+1]+sin(globalTime*2.0f)*10.0f;
+//     }
+// 
+//     // coloring if both collide
+//     fc = cpoly_cv_intersects_SAT(g_convexpoly1, g_convexpolycount1, STRIDE, g_convexTransform, g_convexpolycount1, -1) ? othc : C_REDISH;
+//     drawPolygon(1, g_convexTransform, g_convexpolycount1, 0.0f, 0.0f,fc);
+//     drawPolygon(0, g_convexTransform, g_convexpolycount1, 0.0f, 0.0f,fc);
   }
 
   if ( glfwGetKey(window, GLFW_KEY_A)==GLFW_PRESS )
   {
     //cpoly_transform_translate(g_convexpoly1, g_convexpolycount1, STRIDE, 0, 0);
     cpoly_transform_rotate(g_convexpoly1, g_convexpolycount1, STRIDE, 0.016f,NULL,NULL);
+  }
+
+  if ( glfwGetKey(window, GLFW_KEY_LEFT)==GLFW_PRESS )
+  {
+    g_pos1[0] -= 1.16f;
+    cpoly_transform_translate(g_convexpoly1, g_convexpolycount1, STRIDE, g_pos1[0], g_pos1[1]);
   }
 
   glPointSize(15.0f);
@@ -196,7 +209,8 @@ int main()
     exit(EXIT_FAILURE);
   }
 
-  cpoly_cv_union(g_convexpoly0, g_convexpolycount0, STRIDE, g_convexpoly1, g_convexpolycount1, STRIDE);
+  //cpoly_cv_diff(g_convexpoly0, g_convexpolycount0, STRIDE, g_convexpoly1, g_convexpolycount1, STRIDE);
+  cpoly_poly_centroid(g_convexpoly1,g_convexpolycount1,STRIDE,g_pos1,g_pos1+1);
 
   cpoly_transform_scale(g_poly, g_polycount, STRIDE, 1.5f, 1.5f,0,0);
 

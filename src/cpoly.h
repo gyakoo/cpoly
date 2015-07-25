@@ -38,6 +38,9 @@ extern "C" {
   // Union of convex polygons. Returns no. of vertices to be accessed with cpoly_pool_get_vertex
   // assumes: convex polygons, intersecting, no one inside another, no holes.
   int cpoly_cv_union(void* pts0, int npts0, int stride0, void* pts1, int npts1, int stride1);
+  
+  // Difference of convex polygons, returns no. of vertices to be accessed with cpoly_pool_get_vertex
+  int cpoly_cv_diff(void* pts0, int npts0, int stride0, void* pts1, int npts1, int stride1);
 
   // some basic homogeneous transformation functions
   void cpoly_transform_rotate(void* pts, int npts, int stride, float angle, float* xpivot, float* ypivot);
@@ -329,14 +332,9 @@ int cpoly_pool_get_index(int n)
   return *(int*)( cpoly_pool+n*sizeof(int));
 }
 
-void cpoly_bitset_reset(cpoly_bitset bs, int n)
+void cpoly_bitset_put(cpoly_bitset bs, int n, int value)
 {
-  bs[n>>3] &= ~( 1<<(n%8) );
-}
-
-void cpoly_bitset_set(cpoly_bitset bs, int n)
-{
-  bs[n>>3] |= 1<<(n%8);
+  bs[n>>3] ^= value<<(n%8);
 }
 
 int cpoly_bitset_get(cpoly_bitset bs, int n)
@@ -351,7 +349,7 @@ void cpoly_bitset_allzero(cpoly_bitset bs)
   for (i=0;i<CPOLY_MAXBITSET_BYTES;++i) bs[i]=0;
 }
 
-// assumes: convex polygons, no one inside another, no holes.
+// assumes: convex polygons, no one inside another, no holes, clockwise????
 int cpoly_cv_union(void* pts0, int npts0, int stride0, void* pts1, int npts1, int stride1)
 {
   const int npts[2]={npts0,npts1};
@@ -368,10 +366,11 @@ int cpoly_cv_union(void* pts0, int npts0, int stride0, void* pts1, int npts1, in
   // some more checks here
   if (stride1<=0) stride1=stride0;
   if (npts0>=cpoly_bitset_maxbits || npts1>=cpoly_bitset_maxbits) return 0;
-  
+
   // pick start vertex out of two polygons (can be the one with min X if we use a straight Vertical sweep line)
   for (P=0;P<2;++P)
   {
+    cpoly_bitset_allzero(bitsets[P]);
     oP = (P+1)%2;
     for (v=0;v<npts[P];++v )
     {
@@ -382,13 +381,9 @@ int cpoly_cv_union(void* pts0, int npts0, int stride0, void* pts1, int npts1, in
       if ( !inside ) 
       { 
         ++counts[P]; 
-        cpoly_bitset_reset(bitsets[P],v); 
         if ( x0<minx ) { minp=P; minv=v; minx=x0; }
       } 
-      else 
-      { 
-        cpoly_bitset_set(bitsets[P],v); 
-      }
+      cpoly_bitset_put(bitsets[P],v, inside);
     }
   }
 
@@ -404,7 +399,7 @@ int cpoly_cv_union(void* pts0, int npts0, int stride0, void* pts1, int npts1, in
     {
       cpoly_getxy(pts[P],stride[P],v,x0,y0);
       cpoly_pool_add_vertex(x0,y0); --counts[P]; // adds the first one in the edge
-      cpoly_bitset_set(bitsets[P],v); // marks this vertex as outside, so can't be further processed
+      cpoly_bitset_put(bitsets[P],v,1); // marks this vertex as outside, so can't be further processed
 
       cpoly_getxy(pts[P],stride[P],(v+1)%npts[P],x1,y1);
 
@@ -425,6 +420,91 @@ int cpoly_cv_union(void* pts0, int npts0, int stride0, void* pts1, int npts1, in
 
   return cpoly_pool_count;
 }
+
+int cpoly_max(int a, int b){ return a>b?a:b; }
+int cpoly_min(int a, int b){ return a<b?a:b; }
+
+// Result is Polygon0 - Polygon1
+int cpoly_cv_diff(void* pts0, int npts0, int stride0, void* pts1, int npts1, int stride1)
+{
+  const int npts[2]={npts0,npts1};
+  void* pts[2]={pts0,pts1};
+  const int stride[2]={stride0,stride1<=0?stride0:stride1};
+  int P,v,e,oP,nextv;
+  float minx=FLT_MAX;
+  int minv;
+  float x0,y0,x1,y1,ix,iy;
+  int counts[2]={0,0}; // in P0 it counts no. of remaining outsiders, in P1 it marks no. of remaining insiders
+  int inside;
+  cpoly_bitset bitsets[2]; // in P0 it marks insiders, in P1 it marks outsiders
+
+  // some more checks here
+  if (stride1<=0) stride1=stride0;
+  if (npts0>=cpoly_bitset_maxbits || npts1>=cpoly_bitset_maxbits) return 0;
+
+  // pick start vertex of first polygon, count for both
+  for (P=0;P<2;++P)
+  {
+    cpoly_bitset_allzero(bitsets[P]);
+    oP = (P+1)%2;
+    for (v=0;v<npts[P];++v )
+    {
+      cpoly_getxy(pts[P],stride[P],v,x0,y0);
+
+      inside = cpoly_cv_point_inside(pts[oP],npts[oP],stride[oP],x0,y0);
+      if ( P==0 )
+      {
+        if ( !inside ){ ++counts[0]; if ( x0<minx ) { minv=v; minx=x0; } }
+        cpoly_bitset_put(bitsets[0],v,inside);
+      }
+      else 
+      {
+        if (inside) {++counts[1];} 
+        cpoly_bitset_put(bitsets[1],v,inside^1);
+      }      
+    }
+  }
+
+ 
+  if ( counts[0]==npts[0] || counts[1]==0 ) return 0; // no overlap
+   
+  // start with that min vertex from P0. In poly0, we go CW, in poly1 we go CCW
+  v = minv; nextv=1; P=0; oP=1; 
+  cpoly_pool_count = 0;
+ 
+  // while still outside points from P0 and inside points from P1
+  while ( counts[0]>0 || counts[1]>0 )
+  {
+    if ( !cpoly_bitset_get(bitsets[P],v) )
+    {
+      cpoly_getxy(pts[P],stride[P],v,x0,y0);
+      cpoly_pool_add_vertex(x0,y0); --counts[P]; // adds the first one in the edge
+      cpoly_bitset_put(bitsets[P],v,1); // marks this vertex to further ignored
+
+      cpoly_getxy(pts[P],stride[P],nextv,x1,y1);
+
+      // for this edge, intersects with the any of the other polygon's edge?
+      if ( cpoly_cv_seg_isec_poly_closest(x0,y0,x1,y1,pts[oP],npts[oP],stride[oP],&ix,&iy,&e) )
+      {
+        cpoly_pool_add_vertex(ix,iy);        
+        P=oP; oP=(oP+1)%2; // the other poly
+        //continues with next poly vertex
+        if (P==0){ v=e; }else{ v=(e+1)%npts[1]; }
+      }      
+    } 
+    else if ( !counts[P] ) // no more vertices to process in current polygon, jump to the other
+    {
+      P=oP; oP=(oP+1)%2;
+    }
+
+    if (P==0) { v = (v+1)%npts[0]; nextv=(v+1)%npts[P]; } 
+    else      { --v; if (v<0) v=npts[1]-1; nextv=v-1; if (nextv<0) nextv=npts[1]-1; }
+    if ( P==0 && v==minv) break;
+  }
+
+  return cpoly_pool_count;
+}
+
 
 // some basic hom transformation
 void cpoly_transform_rotate(void* pts, int npts, int stride, float anglerad, float* xpivot, float* ypivot)
