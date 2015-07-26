@@ -39,7 +39,23 @@ extern "C" {
   // assumes: convex polygons, intersecting, no one inside another, no holes.
   int cpoly_cv_union(void* pts0, int npts0, int stride0, void* pts1, int npts1, int stride1);
   
-  // Difference of convex polygons, returns no. of vertices to be accessed with cpoly_pool_get_vertex
+  // Difference of convex polygons, returns no. of parts generated
+  // You got the parts offsets starting from part 1 in cpoly_pool_i indices
+  // All the vertices generated in cpoly_pool_v
+  /* example:
+    cpoly_cv_diff(poly0, N0, STRIDE, poly1, N1, STRIDE);    
+    k=0;
+    for ( i = 0; i < cpoly_pool_icount; ++i ) // for all parts
+    {
+      glBegin(GL_LINE_LOOP);
+      for ( j=k; j<cpoly_pool_get_index(i); ++j )
+      {
+          cpoly_pool_get_vertex(j,&x,&y);
+          glVertex2f( x, y);
+      }
+      glEnd();
+      k=j;
+  */
   int cpoly_cv_diff(void* pts0, int npts0, int stride0, void* pts1, int npts1, int stride1);
 
   // some basic homogeneous transformation functions
@@ -52,6 +68,12 @@ extern "C" {
 
   // computes convex hull of a polygon. Returns no of indices to vertices in original polygon, use cpoly_pool_get_index
   int cpoly_convex_hull(void* pts, int npts, int stride);
+
+  // computes axis aligned bounding box
+  void cpoly_aabb(void* pts, int npts, int stride, float* xmin, float* ymin, float* xmax, float* ymax);
+
+  // 
+  int cpoly_marching_sq(void* pts, int npts, int stride, float sqside);
 
 #ifdef __cplusplus
 };
@@ -67,7 +89,7 @@ TODO:
 */
 
 #ifndef CPOLY_MAXPOOLSIZE_BYTES 
-#define CPOLY_MAXPOOLSIZE_BYTES (16<<10)
+#define CPOLY_MAXPOOLSIZE_BYTES (1<<20)
 #else
 #if CPOLY_MAXPOOLSIZE_BYTES <= 32
 #undef CPOLY_MAXPOOLSIZE_BYTES
@@ -108,7 +130,9 @@ const int cpoly_bitset_maxbits = CPOLY_MAXBITSET_BYTES*8;
 // returns xy from a stream of floats (pointer, stride, index)
 #define cpoly_getx(p,s,n) (*(    (float*)( (char*)(p) + ((s)*(n)) ) ))
 #define cpoly_gety(p,s,n) (*(    (float*)( (char*)(p) + ((s)*(n)+sizeof(float)) ) ))
+#define cpoly_getz(p,s,n) (*(    (float*)( (char*)(p) + ((s)*(n)+sizeof(float)*2) ) ))
 #define cpoly_getxy(p,s,n,x,y) { x=cpoly_getx(p,s,n); y=cpoly_gety(p,s,n); }
+#define cpoly_getxyz(p,s,n,x,y,z) { x=cpoly_getx(p,s,n); y=cpoly_gety(p,s,n); z=cpoly_getz(p,s,n);}
 #define cpoly_setx(p,s,n,f) cpoly_getx(p,s,n)=f
 #define cpoly_sety(p,s,n,f) cpoly_gety(p,s,n)=f
 #define cpoly_setxy(p,s,n,x,y) { cpoly_setx(p,s,n,x); cpoly_sety(p,s,n,y); }
@@ -321,6 +345,11 @@ int cpoly_cv_seg_isec_poly_first(float x0, float y0, float x1, float y1, void* p
 void cpoly_pool_add_vertex(float x, float y)
 {
   float* ptr = (float*)( cpoly_pool_v+cpoly_pool_vcount*sizeof(float)*2);
+
+#ifdef _DEBUG
+  if ( cpoly_pool_vcount >= CPOLY_POOL_VMAX )
+    __debugbreak();
+#endif
   *(ptr++) = x; *ptr = y;
   ++cpoly_pool_vcount;
 }
@@ -448,7 +477,6 @@ int cpoly_cv_diff(void* pts0, int npts0, int stride0, void* pts1, int npts1, int
   int counts[2]={0,0}; // in P0 it counts no. of remaining outsiders, in P1 it marks no. of remaining insiders
   int inside;
   cpoly_bitset bitsets[2]; // in P0 it marks insiders, in P1 it marks outsiders
-  int countPart;
 
   cpoly_pool_vcount = 0;
   cpoly_pool_icount = 0;
@@ -597,7 +625,7 @@ void cpoly_transform_translate(void* pts, int npts, int stride, float x, float y
 {
   int i;
   float xp,yp;
-  float xc,yc;
+  float xc=0,yc=0;
 
   if ( !xpivot || !ypivot ) cpoly_poly_centroid(pts,npts,stride,&xc,&yc);
   if ( xpivot ) xc=*xpivot;
@@ -633,7 +661,7 @@ void cpoly_poly_centroid(void* pts, int npts, int stride, float* cx, float* cy)
 int cpoly_convex_hull(void* pts, int npts, int stride)
 {
   int i, endp;
-  int initv, v;
+  int initv=0, v;
   float minx=FLT_MAX;
   float x0,y0,x1,y1,x2,y2;
 
@@ -674,5 +702,71 @@ int cpoly_convex_hull(void* pts, int npts, int stride)
   return cpoly_pool_icount;
 }
 
+// computes marching squares of the points given by the circles (x0,y0,r0), (x1,y1,r1)...
+int cpoly_marching_sq(void* pts, int npts, int stride, float sqside)
+{
+  int i,j,k;
+  int stepsx, stepsy;
+  float x0,y0,r,f;
+  float x1,y1,a,b;
+  float minis[2]={FLT_MAX,FLT_MAX};
+  float maxis[2]={-FLT_MAX,-FLT_MAX};
+  //const float sqsidehalf = sqside*0.5f;
+  const float threshold=1.0f;
+  if ( npts <= 0 ) return 0;
+
+  // computes AABB of circles
+  for (i=0;i<npts;++i)
+  {
+    cpoly_getxyz(pts,stride,i,x0,y0,r);
+    x1=x0-r; y1=y0-r; if ( x1 < minis[0] ) minis[0]=x1; if ( y1 < minis[1] ) minis[1]=y1;
+    x1=x0+r; y1=y0+r; if ( x1 > maxis[0] ) maxis[0]=x1; if ( y1 > maxis[1] ) maxis[1]=y1;
+  }
+
+  // no of steps in horiz/vert
+  stepsx = (int)ceilf((maxis[0]-minis[0])/sqside);
+  stepsy = (int)ceilf((maxis[1]-minis[1])/sqside);
+  cpoly_pool_vcount=0;
+
+  // marching...
+  y0 = minis[1];
+  for (j=0;j<stepsy;++j,y0+=sqside)
+  {
+    x0 = minis[0];
+    for (i=0;i<stepsx;++i,x0+=sqside)
+    {
+      // Evaluate f for all point-circles
+      f=0.0f;
+      for (k=0;k<npts;++k)
+      {
+        cpoly_getxyz(pts,stride,k,x1,y1,r);
+        a=x1-x0; a*=a; b=y1-y0; b*=b;
+        f+= (r*r)/(a+b);
+      }
+
+      if ( f>=threshold )
+        cpoly_pool_add_vertex(x0,y0);
+    }
+  }
+  return cpoly_pool_vcount;
+}
+
+// computes axis aligned bounding box
+void cpoly_aabb(void* pts, int npts, int stride, float* xmin, float* ymin, float* xmax, float* ymax)
+{
+  int i;
+  float x,y;
+
+  *xmin = *ymin = FLT_MAX;
+  *xmax = *ymax = -FLT_MAX;
+
+  // computes AABB 
+  for (i=0;i<npts;++i)
+  {
+    cpoly_getxy(pts,stride,i,x,y);
+    if ( x < *xmin ) *xmin=x; if ( y < *ymin ) *ymin=y;
+    if ( x > *xmax ) *xmax=x; if ( y > *ymax ) *ymax=y;
+  }
+}
 
 #endif
