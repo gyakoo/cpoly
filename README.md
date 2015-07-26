@@ -6,7 +6,7 @@ Sample in OpenGL provided, which depends on GLFW (included and also in https://g
 Algorithms are work in progress, aka not optimized enough or production quality code.
 
 ```c++
-    // Returns 0 if it's not convex. 1 for convex-CW 2 for convex-CCW
+  // Returns 0 if it's not convex. 1 for CW for CCW
   int cpoly_is_convex(void* pts, int npts, int stride);
 
   // Returns 1 if the point is inside a convex polygon
@@ -31,17 +31,39 @@ Algorithms are work in progress, aka not optimized enough or production quality 
   // assumes: convex polygons, intersecting, no one inside another, no holes.
   int cpoly_cv_union(void* pts0, int npts0, int stride0, void* pts1, int npts1, int stride1);
   
-  // Difference of convex polygons, returns no. of vertices to be accessed with cpoly_pool_get_vertex
+  // Difference of convex polygons, returns no. of parts generated
+  // You got the parts offsets starting from part 1 in cpoly_pool_i indices
+  // All the vertices generated in cpoly_pool_v
+  /* example:
+    cpoly_cv_diff(poly0, N0, STRIDE, poly1, N1, STRIDE);    
+    k=0;
+    for ( i = 0; i < cpoly_pool_icount; ++i ) // for all parts
+    {
+      glBegin(GL_LINE_LOOP);
+      for ( j=k; j<cpoly_pool_get_index(i); ++j )
+      {
+          cpoly_pool_get_vertex(j,&x,&y);
+          glVertex2f( x, y);
+      }
+      glEnd();
+      k=j;
+  */
   int cpoly_cv_diff(void* pts0, int npts0, int stride0, void* pts1, int npts1, int stride1);
 
   // some basic homogeneous transformation functions
   void cpoly_transform_rotate(void* pts, int npts, int stride, float angle, float* xpivot, float* ypivot);
   void cpoly_transform_scale(void* pts, int npts, int stride, float sx, float sy, float* xpivot, float* ypivot);
-  void cpoly_transform_translate(void* pts, int npts, int stride, float x, float y);
+  void cpoly_transform_translate(void* pts, int npts, int stride, float x, float y, float* xpivot, float* ypivot);
 
   // geometric center computation (center of mass or centroid)
   void cpoly_poly_centroid(void* pts, int npts, int stride, float* cx, float* cy);
 
   // computes convex hull of a polygon. Returns no of indices to vertices in original polygon, use cpoly_pool_get_index
   int cpoly_convex_hull(void* pts, int npts, int stride);
+
+  // computes axis aligned bounding box
+  void cpoly_aabb(void* pts, int npts, int stride, float* xmin, float* ymin, float* xmax, float* ymax);
+
+  // 
+  int cpoly_marching_sq(void* pts, int npts, int stride, float sqside);
 ``` 
