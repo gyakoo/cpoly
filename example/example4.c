@@ -35,7 +35,6 @@ void frame(GLFWwindow* window)
 {
 	int width = 0, height = 0;
   int i;
-  float* fc;
   static float globalTime=0.0f;
   float x,y;
 
@@ -70,6 +69,7 @@ void frame(GLFWwindow* window)
   {
     glPointSize(2.0f);
     cpoly_marching_sq(g_circles,MAXCIRCLES,sizeof(sCircle),5.0f);
+    
     glBegin(GL_POINTS);
     for ( i=0;i<cpoly_pool_vcount;++i )
     {
@@ -97,7 +97,7 @@ void resizecb(GLFWwindow* window, int width, int height)
 
 float randrange(float a, float b)
 {
-  return a + ((float)rand()/RAND_MAX*fabs(b-a));
+  return a + (float)((float)rand()/RAND_MAX*fabs(b-a));
 }
 
 void randomcircles()

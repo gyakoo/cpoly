@@ -736,21 +736,48 @@ void cpoly_rmg_set(sRMGrid* rmg, int i, int j, int val)
   rmg->values[byteoffs]= ((i%2)==1) ? ((b&0xf0)|valc) : ((b&0x0f)|(valc<<4));
 }
 
-#define CPOLY_RMF(_f) {(_f)=0.0f; for (k=0;k<npts;++k) { cpoly_getxyz(pts,stride,k,x1,y1,r); a=x1-x0; a*=a; b=y1-y0; b*=b; (_f)+= (r*r)/(a+b); }}
+float cpoly_rmg_func(void* pts, int npts, int stride, float x, float y)
+{
+  float f=0.0f;
+  int k;
+  float x1,y1,r;
+  float a,b;
+
+  for (k=0;k<npts;++k) 
+  { 
+    cpoly_getxyz(pts,stride,k,x1,y1,r); 
+    a=x1-x; a*=a; 
+    b=y1-y; b*=b; 
+    f+= (r*r)/(a+b); 
+  }
+
+  return f;
+}
+
+int cpoly_rmg_cellvalue(float c0, float c1, float c2, float c3)
+{
+  int val=0;
+  if (c0>=1.0f) val |= 1<<0;
+  if (c1>=1.0f) val |= 1<<1;
+  if (c2>=1.0f) val |= 1<<2;
+  if (c3>=1.0f) val |= 1<<3;
+  return val;
+}
+
+int cpoly_clampi(int v, int m, int M){ return (v<m)?m:(v>M?M:v); }
 
 // computes marching squares of the points given by the circles (x0,y0,r0), (x1,y1,r1)...
 int cpoly_marching_sq(void* pts, int npts, int stride, float sqside)
 {
-  int i,j,k;
+  int i,j,k,mini,minj,dir;
   int stepsx, stepsy;
   float x0,y0,r;
-  float x1,y1,a,b;
+  float x1,y1;
   float c0,c1,c2,c3;
   float minis[2]={FLT_MAX,FLT_MAX};
   float maxis[2]={-FLT_MAX,-FLT_MAX};
-  const float threshold=1.0f;
   sRMGrid grid;
-  float *row, *colvalues;
+  float *rowvalues;
 
   if ( npts <= 0 ) return 0;
 
@@ -765,32 +792,67 @@ int cpoly_marching_sq(void* pts, int npts, int stride, float sqside)
   // setting up
   stepsx = (int)ceilf((maxis[0]-minis[0])/sqside);
   stepsy = (int)ceilf((maxis[1]-minis[1])/sqside);
-  cpoly_pool_vcount=0;
   cpoly_rmg_create(&grid,stepsx,stepsy);  
-  row = (float*)cpoly_pool_v; 
-  colvalues = (float*)(cpoly_pool_v+sizeof(float)*(stepsx+1)); // reusing pool for a line/col of function values
+  rowvalues = (float*)cpoly_pool_i; 
+  mini=minj=-1;
+  cpoly_pool_vcount=0;
 
-  // computing initial cell corners (first row/first colum)
-  x0=minis[0]; y0=minis[1]; 
-  for (i=0;i<=stepsx;++i,x0+=sqside){ CPOLY_RMF(row[i]); }    
-  colvalues[0]=row[0]; x0=minis[0]; y0=minis[1]+sqside; 
-  for (j=1;j<=stepsy;++j,y0+=sqside){ CPOLY_RMF(colvalues[j]); }
-  
-  // computing cell corners values for the rest
-  y0 = minis[1]+sqside;
-  for (j=0;j<stepsy;++j,y0+=sqside)
+  // computing cell values
   {
-    x0 = minis[0]+sqside;
-    for (i=0;i<stepsx;++i,x0+=sqside)
+    // first row (avoid duplicate computation)
+    x0=minis[0]; y0=maxis[1]; 
+    for (i=0;i<=stepsx;++i,x0+=sqside)
+    { 
+      rowvalues[i]=cpoly_rmg_func(pts,npts,stride,x0,y0); 
+//       if ( rowvalues[i]>=1.0f)
+//         cpoly_pool_add_vertex(x0,y0);
+    }
+    
+    // computing cell corners values for the rest of rows
+    y0 = maxis[1]-sqside;
+    for (j=0;j<stepsy;++j,y0-=sqside)
     {
-      c0=
-      CPOLY_RMF(c2); // once we evaluate this corner we have a cell finished
-
-      if ( f>=threshold )
-        cpoly_pool_add_vertex(x0,y0);
+      x0 = minis[0]+sqside;
+      for (i=0;i<stepsx;++i,x0+=sqside)
+      {
+        c0=cpoly_rmg_func(pts,npts,stride,x0-sqside,y0); //if ( c0>=1.0f) cpoly_pool_add_vertex(x0-sqside,y0);
+        c1=cpoly_rmg_func(pts,npts,stride,x0,y0);        //if ( c1>=1.0f) cpoly_pool_add_vertex(x0,y0);
+        c2=rowvalues[i+1];
+        c3=rowvalues[i];
+        k=cpoly_rmg_cellvalue(c0,c1,c2,c3);
+        cpoly_rmg_set(&grid,i,j,k);
+        if ( k && mini==-1)
+        { 
+          mini=i; minj=j; 
+        }
+        rowvalues[i]=c0;
+      }
+      rowvalues[i]=c1;
     }
   }
 
+  // outlining a polygon (clock wise)
+  {
+    i=mini; j=minj;
+    k=cpoly_rmg_get(&grid,i,j);
+    if ( k!=2 )
+    {
+      k=k;
+    }
+  }
+
+  // temporary
+//   y0 = maxis[1]-sqside*0.5f;
+//   for (j=0;j<stepsy/2;++j,y0-=sqside)
+//   {
+//     x0 = minis[0]+sqside*0.5f;
+//     for (i=0;i<stepsx;++i,x0+=sqside)
+//     {
+//       k = cpoly_rmg_get(&grid,i,j);
+//       if ( k && k<15 )
+//         cpoly_pool_add_vertex(x0,y0);
+//     }
+//   }
   cpoly_rmg_destroy(&grid);
   return cpoly_pool_vcount;
 }
