@@ -702,17 +702,56 @@ int cpoly_convex_hull(void* pts, int npts, int stride)
   return cpoly_pool_icount;
 }
 
+// uses bytes, but olny 4 bits per byte are used to represent a grid cell value (0-15)
+typedef struct sRMGrid
+{
+  unsigned char* values;
+  int stride;
+}sRMGrid;
+
+void cpoly_rmg_create(sRMGrid* rmg, int width, int height)
+{
+  rmg->stride = (int)ceilf(width/2.0f);
+  rmg->values = (unsigned char*)calloc(rmg->stride*height,1);
+}
+
+void cpoly_rmg_destroy(sRMGrid* rmg)
+{
+  if ( rmg->values ) free(rmg->values);
+}
+
+int cpoly_rmg_get(sRMGrid* rmg, int i, int j)
+{
+  const int byteoffs = rmg->stride*j+(i>>1); // byte offset in memory
+  const unsigned char b = rmg->values[byteoffs]; // byte with two values
+  const int magic = (1-(i%2))<<2; // avoid branch, offset or not
+  return (int)((b>>magic)&0xf); // only takes 4 lsb
+}
+
+void cpoly_rmg_set(sRMGrid* rmg, int i, int j, int val)
+{
+  const int byteoffs = rmg->stride*j+(i>>1); // byte offset in memory
+  const unsigned char b = rmg->values[byteoffs]; // byte with two values
+  const char valc = val&0xf;
+  rmg->values[byteoffs]= ((i%2)==1) ? ((b&0xf0)|valc) : ((b&0x0f)|(valc<<4));
+}
+
+#define CPOLY_RMF(_f) {(_f)=0.0f; for (k=0;k<npts;++k) { cpoly_getxyz(pts,stride,k,x1,y1,r); a=x1-x0; a*=a; b=y1-y0; b*=b; (_f)+= (r*r)/(a+b); }}
+
 // computes marching squares of the points given by the circles (x0,y0,r0), (x1,y1,r1)...
 int cpoly_marching_sq(void* pts, int npts, int stride, float sqside)
 {
   int i,j,k;
   int stepsx, stepsy;
-  float x0,y0,r,f;
+  float x0,y0,r;
   float x1,y1,a,b;
+  float c0,c1,c2,c3;
   float minis[2]={FLT_MAX,FLT_MAX};
   float maxis[2]={-FLT_MAX,-FLT_MAX};
-  //const float sqsidehalf = sqside*0.5f;
   const float threshold=1.0f;
+  sRMGrid grid;
+  float *row, *colvalues;
+
   if ( npts <= 0 ) return 0;
 
   // computes AABB of circles
@@ -723,31 +762,36 @@ int cpoly_marching_sq(void* pts, int npts, int stride, float sqside)
     x1=x0+r; y1=y0+r; if ( x1 > maxis[0] ) maxis[0]=x1; if ( y1 > maxis[1] ) maxis[1]=y1;
   }
 
-  // no of steps in horiz/vert
+  // setting up
   stepsx = (int)ceilf((maxis[0]-minis[0])/sqside);
   stepsy = (int)ceilf((maxis[1]-minis[1])/sqside);
   cpoly_pool_vcount=0;
+  cpoly_rmg_create(&grid,stepsx,stepsy);  
+  row = (float*)cpoly_pool_v; 
+  colvalues = (float*)(cpoly_pool_v+sizeof(float)*(stepsx+1)); // reusing pool for a line/col of function values
 
-  // marching...
-  y0 = minis[1];
+  // computing initial cell corners (first row/first colum)
+  x0=minis[0]; y0=minis[1]; 
+  for (i=0;i<=stepsx;++i,x0+=sqside){ CPOLY_RMF(row[i]); }    
+  colvalues[0]=row[0]; x0=minis[0]; y0=minis[1]+sqside; 
+  for (j=1;j<=stepsy;++j,y0+=sqside){ CPOLY_RMF(colvalues[j]); }
+  
+  // computing cell corners values for the rest
+  y0 = minis[1]+sqside;
   for (j=0;j<stepsy;++j,y0+=sqside)
   {
-    x0 = minis[0];
+    x0 = minis[0]+sqside;
     for (i=0;i<stepsx;++i,x0+=sqside)
     {
-      // Evaluate f for all point-circles
-      f=0.0f;
-      for (k=0;k<npts;++k)
-      {
-        cpoly_getxyz(pts,stride,k,x1,y1,r);
-        a=x1-x0; a*=a; b=y1-y0; b*=b;
-        f+= (r*r)/(a+b);
-      }
+      c0=
+      CPOLY_RMF(c2); // once we evaluate this corner we have a cell finished
 
       if ( f>=threshold )
         cpoly_pool_add_vertex(x0,y0);
     }
   }
+
+  cpoly_rmg_destroy(&grid);
   return cpoly_pool_vcount;
 }
 

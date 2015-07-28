@@ -107,8 +107,8 @@ void randomcircles()
   // init circles
   for (i=0;i<MAXCIRCLES;++i)
   {
-    g_circles[i].x = randrange(-30.0f,30.0f);
-    g_circles[i].y = randrange(-30.0f,30.0f);
+    g_circles[i].x = randrange(-40.0f,40.0f);
+    g_circles[i].y = randrange(-40.0f,40.0f);
     g_circles[i].r = randrange(2.0f, 12.0f);
   }
 }
@@ -121,6 +121,7 @@ void keycallback(GLFWwindow* w, int key, int scancode, int action, int mods)
   if ( key==GLFW_KEY_SPACE && action==GLFW_PRESS)
     randomcircles();
 }
+
 
 int main()
 {
