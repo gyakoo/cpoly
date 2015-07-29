@@ -15,9 +15,10 @@
 #define EXCOMMON_IMPLEMENTATION
 #include "excommon.h"
 
-#define SCREENWIDTH 1024
-#define SCREENHEIGHT 768
+#define SCREENWIDTH 1600
+#define SCREENHEIGHT 1200
 #define SCREENINVR (1.f/((float)SCREENHEIGHT/SCREENWIDTH))
+#define SQSIDE 2.0f
 
 // ortho proj
 const double viewbounds[]={-100, 100, -80, 80, -1, 1};
@@ -30,6 +31,48 @@ typedef struct sCircle
 
 #define MAXCIRCLES 10
 sCircle g_circles[MAXCIRCLES]={0};
+
+void drawgrid()
+{
+  int i,j,stepsx,stepsy;
+  float x,y;
+  float minis[2]={FLT_MAX,FLT_MAX};
+  float maxis[2]={-FLT_MAX, -FLT_MAX};
+  sCircle* cir;
+
+  // computes AABB of circles
+  for (i=0;i<MAXCIRCLES;++i)
+  {
+    cir = g_circles+i;
+    x=cir->x-cir->r; y=cir->y-cir->r; if ( x < minis[0] ) minis[0]=x; if ( y < minis[1] ) minis[1]=y;
+    x=cir->x+cir->r; y=cir->y+cir->r; if ( x > maxis[0] ) maxis[0]=x; if ( y > maxis[1] ) maxis[1]=y;
+  }
+  minis[0]-=SQSIDE; maxis[0]+=SQSIDE;
+  maxis[1]+=SQSIDE; minis[1]-=SQSIDE;
+
+  stepsx = (int)ceilf((maxis[0]-minis[0])/SQSIDE);
+  stepsy = (int)ceilf((maxis[1]-minis[1])/SQSIDE);
+
+  maxis[0] = minis[0]+SQSIDE*stepsx;
+  minis[1] = maxis[1]-SQSIDE*stepsy;
+
+  glLineWidth(1.0f);
+  glColor4f(0.5f,0.5f,0.5f,0.6f);
+  glBegin(GL_LINES);  
+  y=maxis[1];
+  for ( j=0;j<=stepsy;++j,y-=SQSIDE)
+  {
+    glVertex2f( minis[0], y );
+    glVertex2f( maxis[0], y );
+  }
+  x=minis[0];
+  for (i=0;i<=stepsx;++i,x+=SQSIDE)
+  {
+    glVertex2f( x, maxis[1] );
+    glVertex2f( x, minis[1] );
+  }
+  glEnd();
+}
 
 void frame(GLFWwindow* window)
 {
@@ -67,18 +110,29 @@ void frame(GLFWwindow* window)
 
   if ( glfwGetKey(window,GLFW_KEY_1)==GLFW_PRESS )
   {
-    glPointSize(2.0f);
-    cpoly_marching_sq(g_circles,MAXCIRCLES,sizeof(sCircle),5.0f);
+    glPointSize(4.0f);
+    cpoly_marching_sq(g_circles,MAXCIRCLES,sizeof(sCircle),SQSIDE);
     
+    glColor4f(0,1,0,1);
     glBegin(GL_POINTS);
-    for ( i=0;i<cpoly_pool_vcount;++i )
+    for ( i=0;i<cpoly_pool_icount;++i )
+    {
+      cpoly_pool_get_vertex(i,&x,&y);
+      glVertex2f(x,y);
+    }
+    glEnd();
+
+    glLineWidth(1.0f);
+    glColor4f(1,1,0,1);
+    glBegin(GL_LINE_LOOP);
+    for ( ;i<cpoly_pool_vcount;++i )
     {
       cpoly_pool_get_vertex(i,&x,&y);
       glVertex2f(x,y);
     }
     glEnd();
   }
-
+  drawgrid();
 	
   glPointSize(15.0f);
   glColor4ub(255,255,0,255);

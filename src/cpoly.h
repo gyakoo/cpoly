@@ -772,7 +772,7 @@ int cpoly_marching_sq(void* pts, int npts, int stride, float sqside)
   int i,j,k,mini,minj,dir;
   int stepsx, stepsy;
   float x0,y0,r;
-  float x1,y1;
+  float x1,y1,x2,y2;
   float c0,c1,c2,c3;
   float minis[2]={FLT_MAX,FLT_MAX};
   float maxis[2]={-FLT_MAX,-FLT_MAX};
@@ -788,10 +788,15 @@ int cpoly_marching_sq(void* pts, int npts, int stride, float sqside)
     x1=x0-r; y1=y0-r; if ( x1 < minis[0] ) minis[0]=x1; if ( y1 < minis[1] ) minis[1]=y1;
     x1=x0+r; y1=y0+r; if ( x1 > maxis[0] ) maxis[0]=x1; if ( y1 > maxis[1] ) maxis[1]=y1;
   }
+  minis[0]-=sqside; maxis[0]+=sqside;
+  maxis[1]+=sqside; minis[1]-=sqside;
 
   // setting up
   stepsx = (int)ceilf((maxis[0]-minis[0])/sqside);
   stepsy = (int)ceilf((maxis[1]-minis[1])/sqside);
+  maxis[0] = minis[0]+sqside*stepsx;
+  minis[1] = maxis[1]-sqside*stepsy;
+
   cpoly_rmg_create(&grid,stepsx,stepsy);  
   rowvalues = (float*)cpoly_pool_i; 
   mini=minj=-1;
@@ -804,8 +809,8 @@ int cpoly_marching_sq(void* pts, int npts, int stride, float sqside)
     for (i=0;i<=stepsx;++i,x0+=sqside)
     { 
       rowvalues[i]=cpoly_rmg_func(pts,npts,stride,x0,y0); 
-//       if ( rowvalues[i]>=1.0f)
-//         cpoly_pool_add_vertex(x0,y0);
+      if ( rowvalues[i]>=1.0f)
+        cpoly_pool_add_vertex(x0,y0);
     }
     
     // computing cell corners values for the rest of rows
@@ -815,44 +820,76 @@ int cpoly_marching_sq(void* pts, int npts, int stride, float sqside)
       x0 = minis[0]+sqside;
       for (i=0;i<stepsx;++i,x0+=sqside)
       {
-        c0=cpoly_rmg_func(pts,npts,stride,x0-sqside,y0); //if ( c0>=1.0f) cpoly_pool_add_vertex(x0-sqside,y0);
-        c1=cpoly_rmg_func(pts,npts,stride,x0,y0);        //if ( c1>=1.0f) cpoly_pool_add_vertex(x0,y0);
+        c0=cpoly_rmg_func(pts,npts,stride,x0-sqside,y0); if ( c0>=1.0f) cpoly_pool_add_vertex(x0-sqside,y0);
+        c1=cpoly_rmg_func(pts,npts,stride,x0,y0);        if ( c1>=1.0f) cpoly_pool_add_vertex(x0,y0);
         c2=rowvalues[i+1];
         c3=rowvalues[i];
         k=cpoly_rmg_cellvalue(c0,c1,c2,c3);
-        cpoly_rmg_set(&grid,i,j,k);
-        if ( k && mini==-1)
-        { 
-          mini=i; minj=j; 
+        if ( k==15 )
+        {
+          if      ( i==0 ) k=6;
+          else if ( i==stepsx-1 ) k=9;
+          else if ( j==0 ) k=3;
+          else if ( j==stepsy-1 ) k=12;
         }
+        cpoly_rmg_set(&grid,i,j,k);
+        if ( k && mini==-1){ mini=i; minj=j; }
         rowvalues[i]=c0;
       }
       rowvalues[i]=c1;
     }
   }
+  cpoly_pool_icount=cpoly_pool_vcount; // temporary hack for debug
 
   // outlining a polygon (clock wise)
   {
     i=mini; j=minj;
-    k=cpoly_rmg_get(&grid,i,j);
-    if ( k!=2 )
+    c0=sqside*0.5f;
+    dir=0;
+    do 
     {
-      k=k;
-    }
-  }
+      k=cpoly_rmg_get(&grid,i,j);
+      x0=minis[0]+sqside*i; x1=x0+c0; x2=x0+sqside; // left, med, right (HORIZ)
+      y0=maxis[1]-sqside*j; y1=y0-c0; y2=y0-sqside; // top, med, bottom (VERTI)
+      switch ( k )
+      {
+      case 1: case 13: case 9:    cpoly_pool_add_vertex(x1, y2); ++j; break;
+      case 2: case 3: case 11:    cpoly_pool_add_vertex(x2, y1); ++i; break;
+      case 6: case 7: case 4:     cpoly_pool_add_vertex(x1, y0); --j; break;
+      case 8: case 12: case 14:   cpoly_pool_add_vertex(x0, y1); --i; break;      
+      case 5:
+        switch (dir)
+        { 
+        case 8: case 12: case 14: cpoly_pool_add_vertex(x1, y2); ++j; break;
+        default:                  cpoly_pool_add_vertex(x1, y0); --j; break;
+        }
+      break;
+      case 10: 
+        switch (dir)
+        {
+        case 1: case 13: case 9:  cpoly_pool_add_vertex(x2,y1); ++i; break;
+        default:                  cpoly_pool_add_vertex(x0,y1); --i; break;
+        }
+      break;
+      default: 
+        goto end;
+      }
 
-  // temporary
-//   y0 = maxis[1]-sqside*0.5f;
-//   for (j=0;j<stepsy/2;++j,y0-=sqside)
-//   {
-//     x0 = minis[0]+sqside*0.5f;
-//     for (i=0;i<stepsx;++i,x0+=sqside)
-//     {
-//       k = cpoly_rmg_get(&grid,i,j);
-//       if ( k && k<15 )
-//         cpoly_pool_add_vertex(x0,y0);
-//     }
-//   }
+      // advance CW, caution with boundaries
+      do
+      {
+        dir=0;
+        if ( i<0 ){ i=0; --j; dir=1;}
+        if ( i>=stepsx ){ i=stepsx-1; ++j; dir=1;}
+        if ( j<0 ){ j=0; ++i; dir=1; }
+        if ( j>=stepsy ){ j=stepsy-1; --i; dir=1; }
+      }while(dir);
+
+      dir = k; // last k
+    } while (i!=mini ||j!=minj);
+    
+  }
+  end:
   cpoly_rmg_destroy(&grid);
   return cpoly_pool_vcount;
 }
