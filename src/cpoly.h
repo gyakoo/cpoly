@@ -50,7 +50,7 @@ extern "C" {
       glBegin(GL_LINE_LOOP);
       for ( j=k; j<cpoly_pool_get_index(i); ++j )
       {
-          cpoly_pool_get_vertex(j,&x,&y);
+          cpoly_pool_get_vertex(j,&x,&y); // Polygon i, vertex j
           glVertex2f( x, y);
       }
       glEnd();
@@ -72,8 +72,10 @@ extern "C" {
   // computes axis aligned bounding box
   void cpoly_aabb(void* pts, int npts, int stride, float* xmin, float* ymin, float* xmax, float* ymax);
 
-  // 
-  int cpoly_marching_sq(void* pts, int npts, int stride, float sqside);
+  // calculates the bounding polygons for a set of circle points (x,y,radius)...using marching squares algorithm with no interpolation
+  // sqside is the side of the square
+  // returns number of polygons created. See cpoly_cv_diff for how to get the results.
+  int cpoly_marchingsq_nointerp(void* pts, int npts, int stride, float sqside);
 
 #ifdef __cplusplus
 };
@@ -84,8 +86,9 @@ extern "C" {
 #ifdef CPOLY_IMPLEMENTATION
 /*
 TODO: 
-  http://jamie-wong.com/2014/08/19/metaballs-and-marching-squares/
+  [DONE] http://jamie-wong.com/2014/08/19/metaballs-and-marching-squares/
   http://www.dma.fi.upm.es/docencia/trabajosfindecarrera/programas/geometriacomputacional/PiezasConvex/algoritmo_i.html
+  http://bl.ocks.org/mbostock
 */
 
 #ifndef CPOLY_MAXPOOLSIZE_BYTES 
@@ -767,7 +770,7 @@ int cpoly_rmg_cellvalue(float c0, float c1, float c2, float c3)
 int cpoly_clampi(int v, int m, int M){ return (v<m)?m:(v>M?M:v); }
 
 // computes marching squares of the points given by the circles (x0,y0,r0), (x1,y1,r1)...
-int cpoly_marching_sq(void* pts, int npts, int stride, float sqside)
+int cpoly_marchingsq_nointerp(void* pts, int npts, int stride, float sqside)
 {
   int i,j,k,mini,minj,dir;
   int stepsx, stepsy;
@@ -909,7 +912,7 @@ exitPoly:
     }
   } while ( mini!=-1 && minj!=-1 );
   cpoly_rmg_destroy(&grid);
-  return cpoly_pool_vcount;
+  return cpoly_pool_icount;
 }
 
 // computes axis aligned bounding box
