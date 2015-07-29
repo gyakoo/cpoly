@@ -106,7 +106,7 @@ void frame(GLFWwindow* window)
   if ( glfwGetKey(window,GLFW_KEY_1)==GLFW_PRESS )
   {
     glPointSize(4.0f);
-    cpoly_marching_sq(g_circles,MAXCIRCLES,sizeof(sCircle),SQSIDE);    
+    cpoly_marchingsq_nointerp(g_circles,MAXCIRCLES,sizeof(sCircle),SQSIDE);    
     glLineWidth(1.0f);
     glColor4f(1,1,0,1);
 

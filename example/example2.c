@@ -18,7 +18,7 @@
 // ortho proj
 const double viewbounds[]={-80, 80, -80, 80, -1, 1};
 
-float STRIDE=sizeof(float)*2;
+int STRIDE=sizeof(float)*2;
 float g_convexpoly0[] ={
   -10.0f  , 35.0f,  // 0
   0.0f    , 40.0f,   // 1
@@ -63,13 +63,9 @@ float C_GREEN[4]={0,1,0,1};
 void frame(GLFWwindow* window)
 {
 	int width = 0, height = 0;
-  float x0,y0,x1,y1,x2,y2,x3,y3;
-  float a,step;
+  float x0,y0;
   int i,j,k;
-  float* fc;
   static float globalTime=0.0f;
-  float othc[4]={1,0,10/255.0f,0.3f};
-  float dslow=globalTime*0.01f;
 
   globalTime += 1.0f/60.0f;
 	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
@@ -200,6 +196,15 @@ void frame(GLFWwindow* window)
     cpoly_transform_rotate(g_convexpoly1, g_convexpolycount1, STRIDE, -0.016f,NULL,NULL);
   }
 
+  if ( glfwGetKey(window, GLFW_KEY_S)==GLFW_PRESS )
+  {
+    cpoly_transform_scale(g_convexpoly1, g_convexpolycount1, STRIDE, 0.90f, 0.90f,NULL,NULL);
+  }
+  else if ( glfwGetKey(window, GLFW_KEY_X)==GLFW_PRESS )
+  {
+    cpoly_transform_scale(g_convexpoly1, g_convexpolycount1, STRIDE, 1.10f, 1.10f,NULL,NULL);
+  }
+
   if ( glfwGetKey(window, GLFW_KEY_LEFT)==GLFW_PRESS )
   {
     g_pos1[0] -= 1.16f; cpoly_transform_translate(g_convexpoly1, g_convexpolycount1, STRIDE, g_pos1[0], g_pos1[1], NULL, NULL);
@@ -242,8 +247,6 @@ int main()
 {
 	GLFWwindow* window;
 	const GLFWvidmode* mode;
-
-  int v;
 
   if ( !cpoly_is_convex(g_convexpoly0,g_convexpolycount0,STRIDE) ||
        !cpoly_is_convex(g_convexpoly1,g_convexpolycount1,STRIDE) )
