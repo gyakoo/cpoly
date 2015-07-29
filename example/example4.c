@@ -77,7 +77,7 @@ void drawgrid()
 void frame(GLFWwindow* window)
 {
 	int width = 0, height = 0;
-  int i;
+  int i,j,k;
   static float globalTime=0.0f;
   float x,y;
 
@@ -103,42 +103,51 @@ void frame(GLFWwindow* window)
 	glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
 
   
-  for (i=0;i<MAXCIRCLES;++i)
-  {
-    drawCircle(g_circles[i].x, g_circles[i].y, g_circles[i].r, WHITE, 0, 0, 16.0f);
-  }
-
   if ( glfwGetKey(window,GLFW_KEY_1)==GLFW_PRESS )
   {
     glPointSize(4.0f);
-    cpoly_marching_sq(g_circles,MAXCIRCLES,sizeof(sCircle),SQSIDE);
-    
-    glColor4f(0,1,0,1);
-    glBegin(GL_POINTS);
-    for ( i=0;i<cpoly_pool_icount;++i )
-    {
-      cpoly_pool_get_vertex(i,&x,&y);
-      glVertex2f(x,y);
-    }
-    glEnd();
-
+    cpoly_marching_sq(g_circles,MAXCIRCLES,sizeof(sCircle),SQSIDE);    
     glLineWidth(1.0f);
     glColor4f(1,1,0,1);
-    glBegin(GL_LINE_LOOP);
-    for ( ;i<cpoly_pool_vcount;++i )
+
+    k=0;
+    for (i=0;i<cpoly_pool_icount;++i)
     {
-      cpoly_pool_get_vertex(i,&x,&y);
-      glVertex2f(x,y);
+      glBegin(GL_LINE_LOOP);
+      for (j=k;j<cpoly_pool_get_index(i);++j )
+      {
+        cpoly_pool_get_vertex(j,&x,&y);
+        glVertex2f(x,y);
+      }
+      glEnd();
+      k=j;
     }
-    glEnd();
+
+//     cpoly_convex_hull(cpoly_pool_v,cpoly_pool_get_index(0),sizeof(float)*2);
+//     glColor4ub(0,255,0,255);
+//     glBegin(GL_LINE_LOOP);
+//     for ( i=0; i < cpoly_pool_icount; ++i )
+//     {
+//       j = cpoly_pool_get_index(i);
+//       cpoly_pool_get_vertex(j,&x,&y);
+//       glVertex2f( x,y );
+//     }
+//     glEnd();
+  }
+  //else
+  {
+    for (i=0;i<MAXCIRCLES;++i)
+    {
+      drawCircle(g_circles[i].x, g_circles[i].y, g_circles[i].r, WHITE, 0, 0, 16.0f);
+    }
   }
   drawgrid();
 	
-  glPointSize(15.0f);
-  glColor4ub(255,255,0,255);
-  glBegin(GL_POINTS);
-  glVertex2f(0,0);
-  glEnd();
+//   glPointSize(15.0f);
+//   glColor4ub(255,255,0,255);
+//   glBegin(GL_POINTS);
+//   glVertex2f(0,0);
+//   glEnd();
 
   glfwSwapBuffers(window);
 }

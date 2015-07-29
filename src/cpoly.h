@@ -788,6 +788,7 @@ int cpoly_marching_sq(void* pts, int npts, int stride, float sqside)
     x1=x0-r; y1=y0-r; if ( x1 < minis[0] ) minis[0]=x1; if ( y1 < minis[1] ) minis[1]=y1;
     x1=x0+r; y1=y0+r; if ( x1 > maxis[0] ) maxis[0]=x1; if ( y1 > maxis[1] ) maxis[1]=y1;
   }
+  // expanding one row/col on both sides
   minis[0]-=sqside; maxis[0]+=sqside;
   maxis[1]+=sqside; minis[1]-=sqside;
 
@@ -797,21 +798,16 @@ int cpoly_marching_sq(void* pts, int npts, int stride, float sqside)
   maxis[0] = minis[0]+sqside*stepsx;
   minis[1] = maxis[1]-sqside*stepsy;
 
+  // grid will store the values, 4 bits per cell
   cpoly_rmg_create(&grid,stepsx,stepsy);  
   rowvalues = (float*)cpoly_pool_i; 
   mini=minj=-1;
-  cpoly_pool_vcount=0;
 
   // computing cell values
   {
     // first row (avoid duplicate computation)
     x0=minis[0]; y0=maxis[1]; 
-    for (i=0;i<=stepsx;++i,x0+=sqside)
-    { 
-      rowvalues[i]=cpoly_rmg_func(pts,npts,stride,x0,y0); 
-      if ( rowvalues[i]>=1.0f)
-        cpoly_pool_add_vertex(x0,y0);
-    }
+    for (i=0;i<=stepsx;++i,x0+=sqside) rowvalues[i]=cpoly_rmg_func(pts,npts,stride,x0,y0);
     
     // computing cell corners values for the rest of rows
     y0 = maxis[1]-sqside;
@@ -820,8 +816,8 @@ int cpoly_marching_sq(void* pts, int npts, int stride, float sqside)
       x0 = minis[0]+sqside;
       for (i=0;i<stepsx;++i,x0+=sqside)
       {
-        c0=cpoly_rmg_func(pts,npts,stride,x0-sqside,y0); if ( c0>=1.0f) cpoly_pool_add_vertex(x0-sqside,y0);
-        c1=cpoly_rmg_func(pts,npts,stride,x0,y0);        if ( c1>=1.0f) cpoly_pool_add_vertex(x0,y0);
+        c0=cpoly_rmg_func(pts,npts,stride,x0-sqside,y0);
+        c1=cpoly_rmg_func(pts,npts,stride,x0,y0);
         c2=rowvalues[i+1];
         c3=rowvalues[i];
         k=cpoly_rmg_cellvalue(c0,c1,c2,c3);
@@ -833,22 +829,26 @@ int cpoly_marching_sq(void* pts, int npts, int stride, float sqside)
           else if ( j==stepsy-1 ) k=12;
         }
         cpoly_rmg_set(&grid,i,j,k);
-        if ( k && mini==-1){ mini=i; minj=j; }
+        if ( k && mini==-1){ mini=i; minj=j; } // finding first valid cell from top,left
         rowvalues[i]=c0;
       }
       rowvalues[i]=c1;
     }
   }
-  cpoly_pool_icount=cpoly_pool_vcount; // temporary hack for debug
+
+  // adding poly vertices
+  cpoly_pool_vcount=cpoly_pool_icount=0;
+  c0=sqside*0.5f;
 
   // outlining a polygon (clock wise)
+  do 
   {
     i=mini; j=minj;
-    c0=sqside*0.5f;
     dir=0;
     do 
     {
       k=cpoly_rmg_get(&grid,i,j);
+      if ( k!=5 && k!=10 ) cpoly_rmg_set(&grid,i,j,0);
       x0=minis[0]+sqside*i; x1=x0+c0; x2=x0+sqside; // left, med, right (HORIZ)
       y0=maxis[1]-sqside*j; y1=y0-c0; y2=y0-sqside; // top, med, bottom (VERTI)
       switch ( k )
@@ -872,24 +872,42 @@ int cpoly_marching_sq(void* pts, int npts, int stride, float sqside)
         }
       break;
       default: 
-        goto end;
+        goto exitPoly;
       }
 
       // advance CW, caution with boundaries
       do
       {
         dir=0;
-        if ( i<0 ){ i=0; --j; dir=1;}
+        if ( i<0 )      { i=0; --j; dir=1;}
         if ( i>=stepsx ){ i=stepsx-1; ++j; dir=1;}
-        if ( j<0 ){ j=0; ++i; dir=1; }
+        if ( j<0 )      { j=0; ++i; dir=1; }
         if ( j>=stepsy ){ j=stepsy-1; --i; dir=1; }
       }while(dir);
 
-      dir = k; // last k
-    } while (i!=mini ||j!=minj);
-    
-  }
-  end:
+      dir = k; // last k in dir
+    } while (i!=mini ||j!=minj); // until we reach first cell again
+exitPoly:
+    cpoly_pool_add_index(cpoly_pool_vcount);
+
+    // find other polygon
+    {
+      j=minj;
+      minj=mini=-1;
+      for (;j<stepsy && minj==-1;++j)
+      {
+        for (i=0;i<stepsx;++i)
+        {
+          k=cpoly_rmg_get(&grid,i,j);
+          if ( k>0 && k<15 && k!=5 && k!=10)
+          {
+            mini=i; minj=j;
+            break;
+          }
+        }
+      }
+    }
+  } while ( mini!=-1 && minj!=-1 );
   cpoly_rmg_destroy(&grid);
   return cpoly_pool_vcount;
 }
