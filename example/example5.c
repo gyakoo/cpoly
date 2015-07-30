@@ -84,14 +84,16 @@ void frame(GLFWwindow* window)
   for ( i=0;i<g_polycount;++i ) glVertex2f(g_polygon[i*2], g_polygon[i*2+1]);
   glEnd();
 
-  if ( glfwGetKey(window,GLFW_KEY_2)==GLFW_PRESS || glfwGetKey(window,GLFW_KEY_3)==GLFW_PRESS )
+  glPointSize(8.0f);
+  glColor4f(1,0,0,1);
+  glBegin(GL_POINTS);
+  glVertex2f(g_polygon[0], g_polygon[1]);
+  glEnd();
+
+  if ( glfwGetKey(window,GLFW_KEY_2)==GLFW_PRESS )
   {
-    if ( glfwGetKey(window,GLFW_KEY_2)==GLFW_PRESS )
-      cpoly_convex_partition_brute(g_polygon,g_polycount,sizeof(float)*2);
-    else
-      cpoly_convex_partition(g_polygon,g_polycount,sizeof(float)*2);
-    
-    
+    cpoly_convex_partition(g_polygon,g_polycount,sizeof(float)*2);
+
     k=0;
     for (i=0;i<cpoly_pool_icount[CPOLY_IPOOL_1];++i) // for all partitions
     {
@@ -180,7 +182,7 @@ int main()
 	}
 
   randompoly();
-  for (i=0;i<5;++i) randompoly();
+  for (i=0;i<6;++i) randompoly();
 	glfwSetFramebufferSizeCallback(window, resizecb);
 	glfwMakeContextCurrent(window);
   glfwSetKeyCallback(window, keycallback);
