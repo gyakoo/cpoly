@@ -361,13 +361,29 @@ int __internal_cv_seg_isec_poly_closest(float x0, float y0, float x1, float y1, 
   return 1;
 }
 
+float g_rayOffset=0.0f;
 int cpoly_cv_seg_isec_poly_closest(float x0, float y0, float x1, float y1, void* pts, int npts, int stride, float* ix, float* iy, int* edge)
 {
+  float dx=0,dy=0;
+  if ( g_rayOffset!=0.0f )
+  {
+    dx=x1-x0; dy=y1-y0;
+    x0 += dx*g_rayOffset; y0 += dy*g_rayOffset;
+    x1 -= dx*g_rayOffset; y1 -= dy*g_rayOffset;
+  }
   return __internal_cv_seg_isec_poly_closest(x0,y0,x1,y1,pts,npts,stride,ix,iy,edge,0);
 }
 
 int cpoly_cv_seg_isec_poly_first(float x0, float y0, float x1, float y1, void* pts, int npts, int stride, float* ix, float* iy, int* edge)
 {
+  float dx=0,dy=0;
+  if ( g_rayOffset!=0.0f )
+  {
+    dx=x1-x0; dy=y1-y0;
+    x0 += dx*g_rayOffset; y0 += dy*g_rayOffset;
+    x1 -= dx*g_rayOffset; y1 -= dy*g_rayOffset;
+  }
+
   return __internal_cv_seg_isec_poly_closest(x0,y0,x1,y1,pts,npts,stride,ix,iy,edge,1);
 }
 
@@ -974,6 +990,7 @@ void cpoly_pvs_create(cpolyBitPool* pvs, int npts)
 {
   const int nbits = (int)ceilf(((float)npts-1.0f)*0.5f*npts);
   cpoly_bitset_create(pvs,nbits);
+  pvs->stride = npts;
 }
 
 void cpoly_pvs_destroy(cpolyBitPool* pvs)
@@ -982,13 +999,155 @@ void cpoly_pvs_destroy(cpolyBitPool* pvs)
   free(pvs->values);
 }
 
+int cpoly_pvs_get(cpolyBitPool* pvs, int i, int j)
+{
+  int ndx;
+#ifdef _DEBUG
+  const int maxoffs=(int)( pvs->stride*( (pvs->stride-1)*0.5f ) );
+#endif
+  // swap to keep i < j
+  if ( i>j ){ ndx=i; i=j; j=ndx; } 
+
+  // adjacencies
+  if ( j==((i+1)%pvs->stride) ) return 1;
+  ndx = i-1; if (ndx<0) ndx=pvs->stride-1;
+  if ( j==ndx ) return 1;
+
+  // offset
+  ndx = (int)( i * ( (2*pvs->stride - i - 3)*0.5f ) + j - 1 );
+#ifdef _DEBUG
+  if (ndx < 0 || ndx>=maxoffs) return 0;
+#endif
+  return cpoly_bitset_get(pvs,ndx);
+}
+
+void cpoly_pvs_set(cpolyBitPool* pvs, int i, int j, int v)
+{
+  const int offset = (int)( i * ( (2*pvs->stride - i - 3)*0.5f ) + j - 1 );
+#ifdef _DEBUG
+  const int maxoffs=(int)( pvs->stride*( (pvs->stride-1)*0.5f ) );
+  if (offset < 0 || offset>=maxoffs) return;
+#endif  
+  cpoly_bitset_set(pvs,offset,v);
+}
+
+// check if ray from vertex i to vertex j is an inner ray (going from inside of the polygon)
+int cpoly_is_inner_ray(void* pts, int npts, int stride, int i, int j)
+{
+  int iprev,inext; // index to previous and next vertices to i
+  float xi,yi,xp,yp,xn,yn; // from i, ia, ib respectively
+  float xj,yj; // from j
+  float z,zprev,znext;
+  int r =0;
+
+  iprev = i-1; if (iprev<0) iprev=npts-1;
+  inext = (i+1)%npts;
+  cpoly_getxy(pts,stride,iprev, xp,yp);
+  cpoly_getxy(pts,stride,inext, xn,yn);
+  cpoly_getxy(pts,stride,i, xi,yi);
+  cpoly_getxy(pts,stride,j, xj,yj);
+
+  // check if i is a convex or a concave vertex (clock wise)
+  z=cpoly_zcross(xp,yp,xi,yi,xn,yn);
+
+  zprev=cpoly_zcross(xi,yi,xp,yp,xj,yj);
+  znext=cpoly_zcross(xi,yi,xn,yn,xj,yj);
+  if ( z <= 0.0f )
+  {
+    r = (zprev*znext)<=0.0f ? 1 : 0; // convex vertex. j should be in different sides of edges
+  }
+  else
+  {
+    // concave vertex
+    if ( zprev<=0.0f && znext>=0.0f ) r=0;
+    else r=1;
+  }
+  return r;
+}
+
+// compute potentially visible sets
+void cpoly_pvs(void* pts, int npts, int stride, cpolyBitPool* pvs)
+{
+  int i,j,r;
+  float x0,y0,x1,y1;
+
+  g_rayOffset=0.001f;
+  for (i=0;i<npts; ++i )
+  {
+    // for my adjacent point, vis=1
+    cpoly_pvs_set(pvs,i,i+1,1);
+    cpoly_getxy(pts,stride,i,x0,y0);
+    for (j=i+2;j<npts;++j)
+    {
+      if ( i==0 && j==npts-1 ) { cpoly_pvs_set(pvs,i,j,1); continue; } // special case for first vertex adjacent with last one (loop) (don't like this branch here)
+      if ( cpoly_is_inner_ray(pts,npts,stride, i,j) )
+      {
+        cpoly_getxy(pts,stride,j,x1,y1);
+        r = cpoly_cv_seg_isec_poly_first(x0,y0,x1,y1,pts,npts,stride,NULL,NULL,NULL);
+        cpoly_pvs_set(pvs,i,j,1-r); // vis=1 if no intersection happened (r=0) or vis=0 when r=1
+      }
+      else
+      {
+        cpoly_pvs_set(pvs,i,j,0); // no inner ray, vis=0
+      }
+    }
+  }
+  g_rayOffset=0.0f;
+}
+
 int cpoly_convex_partition(void* pts, int npts, int stride)
 {
-  int i, j, k;
+  int i, j, k, startp;
+  int n,m,v,nextp,initi;
+  float x0,y0,x1,y1,x2,y2;
+  float z;
+  cpolyBitPool pvs;
 
   if ( npts < 3 ) return 0;
 
+  cpoly_pvs_create(&pvs, npts);
+  cpoly_pvs(pts,npts,stride,&pvs);
+
+  cpoly_pool_icount=0;
+  startp=cpoly_pool_icount;
+
   i=0; j=1; k=2;
+  initi=i;
+  cpoly_pool_add_index(i);
+  cpoly_pool_add_index(j);
+  nextp=-1;
+  while (k!=initi)
+  {
+    // k is visible for all vertices in our current convex poly?
+    v=1;
+    for (n=startp;n<cpoly_pool_icount && v;++n)
+    {
+      m = cpoly_pool_get_index(n);
+      v=cpoly_pvs_get(&pvs, m, k);
+    }
+    
+    // if it's visible, does it break the convexity if we add it?
+    if (v)
+    {
+      cpoly_getxy(pts,stride,i,x0,y0);
+      cpoly_getxy(pts,stride,j,x1,y1);
+      cpoly_getxy(pts,stride,k,x2,y2);
+      z=cpoly_zcross(x0,y0,x1,y1,x2,y2);
+      if ( z<=0.0f )
+      {
+        cpoly_pool_add_index(k);
+        i=j; j=k;
+      }
+      else goto jumpvertex; // k was visible, but breaks convexity
+    }
+    else
+    {
+      jumpvertex:
+      // k wasn't visible
+      if ( nextp==-1 ) nextp=k;
+    }
+    k=(k+1)%npts;
+  }
 
   /*
   V = Compute Visibility From Each Vertex to other Vertices
@@ -1010,7 +1169,7 @@ int cpoly_convex_partition(void* pts, int npts, int stride)
 
   */
 
-
+  cpoly_pvs_destroy(&pvs);
   return 0;
 }
 

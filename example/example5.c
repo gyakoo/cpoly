@@ -74,9 +74,37 @@ void frame(GLFWwindow* window)
   for ( i=0;i<g_polycount;++i ) glVertex2f(g_polygon[i*2], g_polygon[i*2+1]);
   glEnd();
 
-  if ( glfwGetKey(window,GLFW_KEY_1)==GLFW_PRESS )
+  if ( glfwGetKey(window,GLFW_KEY_SPACE)==GLFW_PRESS )
   {
+    cpoly_convex_partition(g_polygon,g_polycount,sizeof(float)*2);
+    glBegin(GL_LINE_LOOP);
+    for (i=0;i<cpoly_pool_icount;++i)
+    {
+      k = cpoly_pool_get_index(i);
+      glVertex2f(g_polygon[k*2],g_polygon[k*2+1]);
+    }
+    glEnd();
+  }
+  else if ( glfwGetKey(window,GLFW_KEY_1)==GLFW_PRESS )
+  {
+    cpolyBitPool pvs;
+    cpoly_pvs_create(&pvs,g_polycount);
 
+    cpoly_pvs(g_polygon,g_polycount,sizeof(float)*2,&pvs);
+    glBegin(GL_LINES);
+    for (i=0;i<g_polycount;++i)
+    {
+      for(j=i+2;j<g_polycount;++j)
+      {
+        if ( cpoly_pvs_get(&pvs,i,j) )
+        {
+          glVertex2f(g_polygon[i*2],g_polygon[i*2+1]);
+          glVertex2f(g_polygon[j*2],g_polygon[j*2+1]);
+        }
+      }
+    }
+    glEnd();
+    cpoly_pvs_destroy(&pvs);
   }
   	
   glfwSwapBuffers(window);
@@ -98,7 +126,6 @@ int main()
 {
 	GLFWwindow* window;
 	const GLFWvidmode* mode;
-
 	if (!glfwInit())
 		return -1;
 
