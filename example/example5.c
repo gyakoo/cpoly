@@ -20,27 +20,37 @@
 #define SCREENINVR (1.f/((float)SCREENHEIGHT/SCREENWIDTH))
 
 // original polygon to be decomposed
-float g_polygon[]={ 
-  -10.0f,20.0f,  // 0
-  0.0f, 10.0f,   // 1
-  10.0f, 20.0f,  // 2
-  20.0f, -5.0f,  // 3
-  5.0f, 0.0f,    // 4
-  -5.0f, -40.0f,  // 5
-  -5.0f, -10.0f, // 6
-  -20.0f, -15.0f // 7
-};
+float g_polygon[12*2]={0};
 const int g_polycount= sizeof(g_polygon)/(sizeof(float)*2);
+int fillpoly=0;
 
 // ortho proj
 const double viewbounds[]={-100, 100, -80, 80, -1, 1};
+
+void randompoly()
+{
+  int i;
+  float step=3.14159f*2.0f/g_polycount;
+  float a=0.0f;
+  float x,y;
+  float l;
+
+  for ( i=0; i < g_polycount;++i, a-=step)
+  {
+    l = 2.0f + 30.0f*((float)rand()/RAND_MAX);
+    x=cos(a)*l;
+    y=sin(a)*l;
+    g_polygon[i*2]=x;
+    g_polygon[i*2+1]=y;
+  }
+}
 
 void frame(GLFWwindow* window)
 {
 	int width = 0, height = 0;
   int i,j,k;
   static float globalTime=0.0f;
-  float x,y;
+//  float x,y;
 
   globalTime += 1.0f/60.0f;
 	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
@@ -74,16 +84,42 @@ void frame(GLFWwindow* window)
   for ( i=0;i<g_polycount;++i ) glVertex2f(g_polygon[i*2], g_polygon[i*2+1]);
   glEnd();
 
-  if ( glfwGetKey(window,GLFW_KEY_SPACE)==GLFW_PRESS )
+  if ( glfwGetKey(window,GLFW_KEY_2)==GLFW_PRESS || glfwGetKey(window,GLFW_KEY_3)==GLFW_PRESS )
   {
-    cpoly_convex_partition(g_polygon,g_polycount,sizeof(float)*2);
-    glBegin(GL_LINE_LOOP);
-    for (i=0;i<cpoly_pool_icount;++i)
+    if ( glfwGetKey(window,GLFW_KEY_2)==GLFW_PRESS )
+      cpoly_convex_partition_brute(g_polygon,g_polycount,sizeof(float)*2);
+    else
+      cpoly_convex_partition(g_polygon,g_polycount,sizeof(float)*2);
+    
+    
+    k=0;
+    for (i=0;i<cpoly_pool_icount[CPOLY_IPOOL_1];++i) // for all partitions
     {
-      k = cpoly_pool_get_index(i);
-      glVertex2f(g_polygon[k*2],g_polygon[k*2+1]);
+      glBegin(GL_LINE_LOOP);     
+      for ( j=k; j<cpoly_pool_get_index(CPOLY_IPOOL_1,i);++j)
+      {
+        k=cpoly_pool_get_index(CPOLY_IPOOL_0,j);
+        glVertex2f(g_polygon[k*2],g_polygon[k*2+1]);
+      }
+      k=j;
+      glEnd();
     }
-    glEnd();
+
+    if ( fillpoly )
+    {
+      k=0;
+      for (i=0;i<cpoly_pool_icount[CPOLY_IPOOL_1];++i) // for all partitions
+      {
+        glBegin(GL_TRIANGLE_FAN);
+        for ( j=k; j<cpoly_pool_get_index(CPOLY_IPOOL_1,i);++j)
+        {
+          k=cpoly_pool_get_index(CPOLY_IPOOL_0,j);
+          glVertex2f(g_polygon[k*2],g_polygon[k*2+1]);
+        }
+        k=j;
+        glEnd();
+      }
+    }
   }
   else if ( glfwGetKey(window,GLFW_KEY_1)==GLFW_PRESS )
   {
@@ -119,11 +155,16 @@ void keycallback(GLFWwindow* w, int key, int scancode, int action, int mods)
 {
   if ( key==GLFW_KEY_ESCAPE && action == GLFW_PRESS )
     glfwSetWindowShouldClose(w, GL_TRUE);
+  if ( key==GLFW_KEY_SPACE && action == GLFW_PRESS )
+    randompoly();
+  if (key==GLFW_KEY_TAB && action==GLFW_PRESS)
+    fillpoly=1-fillpoly;
 }
 
 
 int main()
 {
+  int i;
 	GLFWwindow* window;
 	const GLFWvidmode* mode;
 	if (!glfwInit())
@@ -138,6 +179,8 @@ int main()
 		return -1;
 	}
 
+  randompoly();
+  for (i=0;i<5;++i) randompoly();
 	glfwSetFramebufferSizeCallback(window, resizecb);
 	glfwMakeContextCurrent(window);
   glfwSetKeyCallback(window, keycallback);
@@ -149,7 +192,6 @@ int main()
 	while (!glfwWindowShouldClose(window))
 	{
 		frame(window);
-
 
 		glfwPollEvents();
 	}

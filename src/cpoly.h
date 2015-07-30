@@ -69,8 +69,11 @@ extern "C" {
   // computes the convex partition of an arbitrary partition (Hertel-Mehlhorn). See NOTES how to get results.
   int cpoly_convex_partition_HM(void* pts, int npts, int stride);
 
-  // convext partition
+  // convex partition
   int cpoly_convex_partition(void* pts, int npts, int stride);
+
+  // convex partition. tries to compute the partitions starting from all points to see which gives the least no. of parts
+  int cpoly_convex_partition_brute(void* pts, int npts, int stride);
 
 
   /* NOTES
@@ -79,10 +82,10 @@ extern "C" {
 
     cpoly_cv_diff(poly0, N0, sizeof(float)*2, poly1, N1, sizeof(float)*2); // performs difference of polygons poly0-poly1
     k=0;
-    for ( i = 0; i < cpoly_pool_icount; ++i ) // for all resulting polygons
+    for ( i = 0; i < cpoly_pool_icount[CPOLY_IPOOL_0]; ++i ) // for all resulting polygons
     {
       glBegin(GL_LINE_LOOP);
-      for ( j=k; j<cpoly_pool_get_index(i); ++j )
+      for ( j=k; j<cpoly_pool_get_index(CPOLY_IPOOL_0,i); ++j )
       {
           cpoly_pool_get_vertex(j,&x,&y); // Polygon i, vertex j
           glVertex2f( x, y);
@@ -143,14 +146,16 @@ typedef struct cpolyBitPool
 #define cpoly_setx(p,s,n,f) cpoly_getx(p,s,n)=f
 #define cpoly_sety(p,s,n,f) cpoly_gety(p,s,n)=f
 #define cpoly_setxy(p,s,n,x,y) { cpoly_setx(p,s,n,x); cpoly_sety(p,s,n,y); }
-
+#define CPOLY_IPOOL_0 0
+#define CPOLY_IPOOL_1 1
+#define CPOLY_IPOOL_COUNT 2
 // non thread safe shared pools (vertex and index)
 unsigned char cpoly_pool_v[CPOLY_MAXPOOLSIZE_BYTES];
-unsigned char cpoly_pool_i[CPOLY_MAXPOOLSIZE_BYTES];
+unsigned char cpoly_pool_i[2][CPOLY_MAXPOOLSIZE_BYTES];
 const int CPOLY_POOL_VMAX = CPOLY_MAXPOOLSIZE_BYTES/(sizeof(float)*2); // max no of vertices (x,y) in the pool
 const int CPOLY_POOL_IMAX= CPOLY_MAXPOOLSIZE_BYTES/sizeof(int); // max no of indices
 int cpoly_pool_vcount=0;
-int cpoly_pool_icount=0;
+int cpoly_pool_icount[CPOLY_IPOOL_COUNT]={0,0};
 
 //////////////////////////////////////////////////////////////////////////
 // forward decls
@@ -159,9 +164,9 @@ int   cpoly_max(int a, int b);
 int   cpoly_min(int a, int b);
 int   cpoly_clampi(int v, int m, int M);
 void  cpoly_pool_add_vertex(float x, float y);
-void  cpoly_pool_add_index(int ndx);
+void  cpoly_pool_add_index(int ipool, int ndx);
 void  cpoly_pool_get_vertex(int n, float* x, float* y);
-int   cpoly_pool_get_index(int n);
+int   cpoly_pool_get_index(int ipool, int n);
 void  cpoly_bitset_create(cpolyBitPool* bs, int nbits);
 void  cpoly_bitset_destroy(cpolyBitPool* bs);
 void  cpoly_bitset_set(cpolyBitPool* bs, int n, int value);
@@ -399,11 +404,11 @@ void cpoly_pool_add_vertex(float x, float y)
   ++cpoly_pool_vcount;
 }
 
-void cpoly_pool_add_index(int ndx)
+void cpoly_pool_add_index(int ipool,int ndx)
 {
-  int* ptr = (int*)( cpoly_pool_i+cpoly_pool_icount*sizeof(int));
+  int* ptr = (int*)( cpoly_pool_i[ipool]+cpoly_pool_icount[ipool]*sizeof(int));
   *ptr = ndx;
-  ++cpoly_pool_icount;
+  ++cpoly_pool_icount[ipool];
 }
 
 void cpoly_pool_get_vertex(int n, float* x, float* y)
@@ -412,9 +417,9 @@ void cpoly_pool_get_vertex(int n, float* x, float* y)
   *x=*(ptr++); *y=*ptr;
 }
 
-int cpoly_pool_get_index(int n)
+int cpoly_pool_get_index(int ipool,int n)
 {
-  return *(int*)( cpoly_pool_i+n*sizeof(int));
+  return *(int*)( cpoly_pool_i[ipool]+n*sizeof(int));
 }
 
 void cpoly_bitset_create(cpolyBitPool* bs, int nbits)
@@ -536,7 +541,7 @@ int cpoly_cv_diff(void* pts0, int npts0, int stride0, void* pts1, int npts1, int
   cpolyBitPool bitsets[2]; // in P0 it marks insiders, in P1 it marks outsiders
 
   cpoly_pool_vcount = 0;
-  cpoly_pool_icount = 0;
+  cpoly_pool_icount[CPOLY_IPOOL_0] = 0;
   // some more checks here
   if (stride1<=0) stride1=stride0;
   cpoly_bitset_create(bitsets,npts0);
@@ -623,17 +628,17 @@ againray:
       if (v!=minv)
       {
         minv=v;
-        cpoly_pool_add_index(cpoly_pool_vcount);
+        cpoly_pool_add_index(CPOLY_IPOOL_0,cpoly_pool_vcount);
       }
     }
   }
 
   if ( cpoly_pool_vcount )
-    cpoly_pool_add_index(cpoly_pool_vcount);
+    cpoly_pool_add_index(CPOLY_IPOOL_0,cpoly_pool_vcount);
 
   cpoly_bitset_destroy(bitsets+1);
   cpoly_bitset_destroy(bitsets);
-  return cpoly_pool_icount;
+  return cpoly_pool_icount[CPOLY_IPOOL_0];
 }
 
 // some basic hom transformation
@@ -726,7 +731,7 @@ int cpoly_convex_hull(void* pts, int npts, int stride)
   if ( npts <= 2 ) return 0;
 
   // init
-  cpoly_pool_icount=0;
+  cpoly_pool_icount[CPOLY_IPOOL_0]=0;
 
   // picks up the leftmost to start with
   for (i=0;i<npts;++i)
@@ -739,7 +744,7 @@ int cpoly_convex_hull(void* pts, int npts, int stride)
   do
   {
     v=endp;
-    cpoly_pool_add_index(v); // add this vertex to CH
+    cpoly_pool_add_index(CPOLY_IPOOL_0,v); // add this vertex to CH
     cpoly_getxy(pts,stride,v,x0,y0);
 
     // first guess
@@ -757,7 +762,7 @@ int cpoly_convex_hull(void* pts, int npts, int stride)
     }
   }while (initv!=endp);
 
-  return cpoly_pool_icount;
+  return cpoly_pool_icount[CPOLY_IPOOL_0];
 }
 
 void cpoly_msg_create(cpolyBitPool* rmg, int width, int height)
@@ -849,7 +854,7 @@ int cpoly_marchingsq_nointerp(void* pts, int npts, int stride, float sqside)
 
   // grid will store the values, 4 bits per cell
   cpoly_msg_create(&grid,stepsx,stepsy);  
-  rowvalues = (float*)cpoly_pool_i; 
+  rowvalues = (float*)cpoly_pool_i[CPOLY_IPOOL_0]; 
   mini=minj=-1;
 
   // computing cell values
@@ -886,7 +891,7 @@ int cpoly_marchingsq_nointerp(void* pts, int npts, int stride, float sqside)
   }
 
   // adding poly vertices
-  cpoly_pool_vcount=cpoly_pool_icount=0;
+  cpoly_pool_vcount=cpoly_pool_icount[CPOLY_IPOOL_0]=0;
   c0=sqside*0.5f;
 
   // outlining a polygon (clock wise)
@@ -937,7 +942,7 @@ int cpoly_marchingsq_nointerp(void* pts, int npts, int stride, float sqside)
       dir = k; // last k in dir
     } while (i!=mini ||j!=minj); // until we reach first cell again
 exitPoly:
-    cpoly_pool_add_index(cpoly_pool_vcount);
+    cpoly_pool_add_index(CPOLY_IPOOL_0,cpoly_pool_vcount);
 
     // find other polygon
     {
@@ -958,7 +963,7 @@ exitPoly:
     }
   } while ( mini!=-1 && minj!=-1 );
   cpoly_msg_destroy(&grid);
-  return cpoly_pool_icount;
+  return cpoly_pool_icount[CPOLY_IPOOL_0];
 }
 
 // computes axis aligned bounding box
@@ -1099,55 +1104,86 @@ int cpoly_convex_partition(void* pts, int npts, int stride)
 {
   int i, j, k, startp;
   int n,m,v,nextp,initi;
+  int pre,nex;
   float x0,y0,x1,y1,x2,y2;
   float z;
-  cpolyBitPool pvs;
+  cpolyBitPool pvs, used;
+  unsigned char* vcount=0;
 
   if ( npts < 3 ) return 0;
 
   cpoly_pvs_create(&pvs, npts);
+  cpoly_bitset_create(&used,npts);
   cpoly_pvs(pts,npts,stride,&pvs);
+  vcount=(unsigned char*)calloc(npts,1);
 
-  cpoly_pool_icount=0;
-  startp=cpoly_pool_icount;
-
+  cpoly_pool_icount[CPOLY_IPOOL_0]=cpoly_pool_icount[CPOLY_IPOOL_1]=0;
   i=0; j=1; k=2;
-  initi=i;
-  cpoly_pool_add_index(i);
-  cpoly_pool_add_index(j);
-  nextp=-1;
-  while (k!=initi)
+  do
   {
-    // k is visible for all vertices in our current convex poly?
-    v=1;
-    for (n=startp;n<cpoly_pool_icount && v;++n)
+    startp=cpoly_pool_icount[CPOLY_IPOOL_0];
+    cpoly_pool_add_index(CPOLY_IPOOL_0,i); ++vcount[i];
+    cpoly_pool_add_index(CPOLY_IPOOL_0,j); ++vcount[j];
+    initi=i;  
+    nextp=-1;
+    while (k!=initi)
     {
-      m = cpoly_pool_get_index(n);
-      v=cpoly_pvs_get(&pvs, m, k);
-    }
-    
-    // if it's visible, does it break the convexity if we add it?
-    if (v)
-    {
-      cpoly_getxy(pts,stride,i,x0,y0);
-      cpoly_getxy(pts,stride,j,x1,y1);
-      cpoly_getxy(pts,stride,k,x2,y2);
-      z=cpoly_zcross(x0,y0,x1,y1,x2,y2);
-      if ( z<=0.0f )
+      // k is visible for all vertices in our current convex poly?
+      v=1;
+      for (n=startp;n<cpoly_pool_icount[CPOLY_IPOOL_0] && v;++n)
       {
-        cpoly_pool_add_index(k);
-        i=j; j=k;
+        m = cpoly_pool_get_index(CPOLY_IPOOL_0,n);
+        v=cpoly_pvs_get(&pvs, m, k);
       }
-      else goto jumpvertex; // k was visible, but breaks convexity
+    
+      // if it's visible, does it break the convexity if we add it?
+      if (v)
+      {
+        cpoly_getxy(pts,stride,i,x0,y0);
+        cpoly_getxy(pts,stride,j,x1,y1);
+        cpoly_getxy(pts,stride,k,x2,y2);
+        z=cpoly_zcross(x0,y0,x1,y1,x2,y2);
+        if ( z<=0.0f )
+        {
+          cpoly_pool_add_index(CPOLY_IPOOL_0,k);++vcount[k];
+          i=j; j=k;
+        }
+        else goto jumpvertex; // k was visible, but breaks convexity
+      }
+      else
+      {
+        jumpvertex:
+        // k wasn't visible
+        if ( nextp==-1 ) nextp=k;
+      }
+      do
+      {
+        k=(k+1)%npts;
+      }while ( cpoly_bitset_get(&used,k) && k!=initi);
     }
-    else
+
+    cpoly_pool_add_index(CPOLY_IPOOL_1, cpoly_pool_icount[CPOLY_IPOOL_0]);
+    
+    // mark used for indices added that have adjacents already (this is ugly and expensive, todo:change)
+    for (n=0;n<cpoly_pool_icount[CPOLY_IPOOL_0];++n)
     {
-      jumpvertex:
-      // k wasn't visible
-      if ( nextp==-1 ) nextp=k;
+      m=cpoly_pool_get_index(CPOLY_IPOOL_0,n);
+      if ( !cpoly_bitset_get(&used,m) )
+      {
+        pre=m-1; if (pre<0) pre=npts-1;
+        nex=(m+1)%npts;
+        if ( vcount[pre] && vcount[nex] )
+          cpoly_bitset_set(&used,m,1);
+      }
     }
-    k=(k+1)%npts;
-  }
+
+    if ( nextp!=-1 )
+    {
+      i = nextp-1; if (i<0) i=npts-1;
+      j = (i+1)%npts;
+      k = (j+1)%npts;
+    }
+  }while ( nextp!=-1 );
 
   /*
   V = Compute Visibility From Each Vertex to other Vertices
@@ -1163,16 +1199,131 @@ int cpoly_convex_partition(void* pts, int npts, int stride)
         CP += k 
         i=j, j=k
     k = next vertex
-  }
-      
-      
+  }   
 
   */
-
+  free(vcount);
+  cpoly_bitset_destroy(&used);
   cpoly_pvs_destroy(&pvs);
   return 0;
 }
 
+// tries to compute the partitions starting from all points to see which gives the least no. of parts
+int cpoly_convex_partition_brute(void* pts, int npts, int stride)
+{
+  int i, j, k, startp,P,minP,minC=INT_MAX;
+  int n,m,v,nextp,initi, computingLast=0;
+  int pre,nex;
+  float x0,y0,x1,y1,x2,y2;
+  float z;
+  cpolyBitPool pvs, used;
+  unsigned char* vcount=0;
+  unsigned char* pcount=0;
 
+  if ( npts < 3 ) return 0;
+
+  cpoly_pvs_create(&pvs, npts);
+  cpoly_pvs(pts,npts,stride,&pvs);
+  pcount=(unsigned char*)calloc(npts,1);
+  cpoly_bitset_create(&used,npts);
+  vcount=(unsigned char*)calloc(npts,1);
+
+  for ( P=0; P<npts; ++P)
+  {
+begin:
+    cpoly_pool_icount[CPOLY_IPOOL_0]=cpoly_pool_icount[CPOLY_IPOOL_1]=0;
+    i=P; j=(P+1)%npts; k=(P+2)%npts;
+    do
+    {
+      startp=cpoly_pool_icount[CPOLY_IPOOL_0];
+      cpoly_pool_add_index(CPOLY_IPOOL_0,i); ++vcount[i];
+      cpoly_pool_add_index(CPOLY_IPOOL_0,j); ++vcount[j];
+      initi=i;  
+      nextp=-1;
+      while (k!=initi)
+      {
+        // k is visible for all vertices in our current convex poly?
+        v=1;
+        for (n=startp;n<cpoly_pool_icount[CPOLY_IPOOL_0] && v;++n)
+        {
+          m = cpoly_pool_get_index(CPOLY_IPOOL_0,n);
+          v=cpoly_pvs_get(&pvs, m, k);
+        }
+    
+        // if it's visible, does it break the convexity if we add it?
+        if (v)
+        {
+          cpoly_getxy(pts,stride,i,x0,y0);
+          cpoly_getxy(pts,stride,j,x1,y1);
+          cpoly_getxy(pts,stride,k,x2,y2);
+          z=cpoly_zcross(x0,y0,x1,y1,x2,y2);
+          if ( z<=0.0f )
+          {
+            cpoly_pool_add_index(CPOLY_IPOOL_0,k);++vcount[k];
+            i=j; j=k;
+          }
+          else goto jumpvertex; // k was visible, but breaks convexity
+        }
+        else
+        {
+          jumpvertex:
+          // k wasn't visible
+          if ( nextp==-1 ) nextp=k;
+        }
+        do
+        {
+          k=(k+1)%npts;
+        }while ( cpoly_bitset_get(&used,k) && k!=initi);
+      }
+
+      cpoly_pool_add_index(CPOLY_IPOOL_1, cpoly_pool_icount[CPOLY_IPOOL_0]);
+    
+      // mark used for indices added that have adjacents already (this is ugly and expensive, todo:change)
+      for (n=0;n<cpoly_pool_icount[CPOLY_IPOOL_0];++n)
+      {
+        m=cpoly_pool_get_index(CPOLY_IPOOL_0,n);
+        if ( !cpoly_bitset_get(&used,m) )
+        {
+          pre=m-1; if (pre<0) pre=npts-1;
+          nex=(m+1)%npts;
+          if ( vcount[pre] && vcount[nex] )
+            cpoly_bitset_set(&used,m,1);
+        }
+      }
+
+      if ( nextp!=-1 )
+      {
+        i = nextp-1; if (i<0) i=npts-1;
+        j = (i+1)%npts;
+        k = (j+1)%npts;
+      }
+    }while ( nextp!=-1 );
+    if (computingLast) 
+      goto end;
+
+    // reset counts and flags
+    for ( i=0;i<used.stride;++i) used.values[i]=0;
+    for ( i=0;i<npts;++i) vcount[i]=0;
+
+    // no. of parts starting from P
+    pcount[P]=cpoly_pool_icount[CPOLY_IPOOL_1]; 
+    if ( pcount[P] < minC )
+    {
+      minC=pcount[P];
+      minP=P;
+    }
+  }// for P
+
+  P=minP;
+  computingLast=1;
+  goto begin;
+
+  end:
+  free(pcount);
+  free(vcount);
+  cpoly_bitset_destroy(&used);
+  cpoly_pvs_destroy(&pvs);
+  return cpoly_pool_icount[CPOLY_IPOOL_1];
+}
 
 #endif

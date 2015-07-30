@@ -111,10 +111,10 @@ void frame(GLFWwindow* window)
     glColor4f(1,1,0,1);
 
     k=0;
-    for (i=0;i<cpoly_pool_icount;++i)
+    for (i=0;i<cpoly_pool_icount[CPOLY_IPOOL_0];++i)
     {
       glBegin(GL_LINE_LOOP);
-      for (j=k;j<cpoly_pool_get_index(i);++j )
+      for (j=k;j<cpoly_pool_get_index(CPOLY_IPOOL_0,i);++j )
       {
         cpoly_pool_get_vertex(j,&x,&y);
         glVertex2f(x,y);
@@ -123,12 +123,12 @@ void frame(GLFWwindow* window)
       k=j;
     }
 
-//     cpoly_convex_hull(cpoly_pool_v,cpoly_pool_get_index(0),sizeof(float)*2);
+//     cpoly_convex_hull(cpoly_pool_v,cpoly_pool_get_index(CPOLY_IPOOL_0,0),sizeof(float)*2);
 //     glColor4ub(0,255,0,255);
 //     glBegin(GL_LINE_LOOP);
-//     for ( i=0; i < cpoly_pool_icount; ++i )
+//     for ( i=0; i < cpoly_pool_icount[CPOLY_IPOOL_0]; ++i )
 //     {
-//       j = cpoly_pool_get_index(i);
+//       j = cpoly_pool_get_index(CPOLY_IPOOL_0,i);
 //       cpoly_pool_get_vertex(j,&x,&y);
 //       glVertex2f( x,y );
 //     }

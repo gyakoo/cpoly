@@ -103,9 +103,9 @@ void frame(GLFWwindow* window)
     cpoly_convex_hull(cpoly_pool_v, cpoly_pool_vcount,STRIDE);
     glColor4ub(0,255,0,255);
     glBegin(GL_LINE_LOOP);
-    for ( i=0; i < cpoly_pool_icount; ++i )
+    for ( i=0; i < cpoly_pool_icount[CPOLY_IPOOL_0]; ++i )
     {
-      j = cpoly_pool_get_index(i);
+      j = cpoly_pool_get_index(CPOLY_IPOOL_0,i);
       cpoly_pool_get_vertex(j,&x0,&y0);
       glVertex2f( x0,y0 );
     }
@@ -122,9 +122,9 @@ void frame(GLFWwindow* window)
     cpoly_convex_hull(g_poly, g_polycount,STRIDE);
     glColor4ub(0,255,0,255);
     glBegin(GL_LINE_LOOP);
-    for ( i=0; i < cpoly_pool_icount; ++i )
+    for ( i=0; i < cpoly_pool_icount[CPOLY_IPOOL_0]; ++i )
     {
-      j = cpoly_pool_get_index(i);
+      j = cpoly_pool_get_index(CPOLY_IPOOL_0,i);
       glVertex2f( g_poly[j*2], g_poly[j*2+1] );
     }
     glEnd();
@@ -134,10 +134,10 @@ void frame(GLFWwindow* window)
   {
     cpoly_cv_diff(g_convexpoly0,g_convexpolycount0, STRIDE, g_convexpoly1, g_convexpolycount1, STRIDE);    
     k=0;
-    for ( i = 0; i < cpoly_pool_icount; ++i ) // for all parts
+    for ( i = 0; i < cpoly_pool_icount[CPOLY_IPOOL_0]; ++i ) // for all parts
     {
       glBegin(GL_LINE_LOOP);
-      for ( j=k; j<cpoly_pool_get_index(i); ++j )
+      for ( j=k; j<cpoly_pool_get_index(CPOLY_IPOOL_0,i); ++j )
       {
           cpoly_pool_get_vertex(j,&x0,&y0);
           glVertex2f( x0, y0);
@@ -149,9 +149,9 @@ void frame(GLFWwindow* window)
 //     cpoly_convex_hull(cpoly_pool_v, cpoly_pool_vcount,STRIDE);
 //     glColor4ub(0,255,0,255);
 //     glBegin(GL_LINE_LOOP);
-//     for ( i=0; i < cpoly_pool_icount; ++i )
+//     for ( i=0; i < cpoly_pool_icount[CPOLY_IPOOL_0]; ++i )
 //     {
-//       j = cpoly_pool_get_index(i);
+//       j = cpoly_pool_get_index(CPOLY_IPOOL_0,i);
 //       cpoly_pool_get_vertex(j,&x0,&y0);
 //       glVertex2f( x0,y0 );
 //     }
