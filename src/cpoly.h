@@ -1,6 +1,8 @@
 /*
 Disclaimer:
 THIS IS WORK IN PROGRESS, SOME FUNCTIONS AREN'T FINISHED AND/OR HEAVILY TESTED FOR BEHAVIOR AND PERFORMANCE.
+
+ALL functions assume Clock Wise ordering of poly vertices
  */
 
 #ifndef CPOLY_H
@@ -27,6 +29,9 @@ extern "C" {
   // 's' is the intersection fraction 0..1 from x0,y0 to x1,y1 when there's an intersection
   int cpoly_seg_isec(float x0, float y0, float x1, float y1, float x2, float y2, float x3, float y3, float* s);
 
+  // Return 1 if point x,y is inside the triangle given by x0,y0 .. x1,y1 .. x2,y2
+  int cpoly_point_in_triangle(float x, float y, float x0, float y0, float x1, float y1, float x2, float y2);
+
   // returns 1 if segment intersects polygon. returns optionally in ix,iy the closest intersection point
   // edge is the edge index in the polygon assuming they're consecutive (edge = start_vertex)
   int cpoly_cv_seg_isec_poly_closest(float x0, float y0, float x1, float y1, void* pts, int npts, int stride, float* ix, float* iy, int* edge);
@@ -36,12 +41,12 @@ extern "C" {
 
   // Union of convex polygons. Returns no. of vertices to be accessed with cpoly_pool_get_vertex
   // assumes: convex polygons, intersecting, no one inside another, no holes.
-  int cpoly_cv_union(void* pts0, int npts0, int stride0, void* pts1, int npts1, int stride1);
+  int cpoly_cv_clip_union(void* pts0, int npts0, int stride0, void* pts1, int npts1, int stride1);
   
   // Difference of convex polygons, returns no. of parts generated
   // You got the parts offsets starting from part 1 in cpoly_pool_i indices
   // All the vertices generated in cpoly_pool_v (See NOTES how to get results.)  
-  int cpoly_cv_diff(void* pts0, int npts0, int stride0, void* pts1, int npts1, int stride1);
+  int cpoly_cv_clip_diff(void* pts0, int npts0, int stride0, void* pts1, int npts1, int stride1);
 
   // rotate around a pivot, NULL to rotate around center.
   void cpoly_transform_rotate(void* pts, int npts, int stride, float angle, float* xpivot, float* ypivot);
@@ -66,11 +71,9 @@ extern "C" {
   // returns number of polygons created. See NOTES for how to get the results.
   int cpoly_marchingsq_nointerp(void* pts, int npts, int stride, float sqside);
 
-  // computes the convex partition of an arbitrary partition (Hertel-Mehlhorn). See NOTES how to get results.
-  int cpoly_convex_partition_HM(void* pts, int npts, int stride);
+  // triangulate by Ear Clipping method
+  int cpoly_triangulate_EC(void* pts, int npts, int stride);
 
-  // convex partition
-  int cpoly_convex_partition(void* pts, int npts, int stride);
 
   /* NOTES
     - For functions returning +1 polygon vertices, it uses poly_pool_v as vertex buffer and cpoly_pool_i as array with polygon counts    
@@ -114,13 +117,23 @@ TODO:
 #endif
 
 #ifndef CPOLY_MAXPOOLSIZE_BYTES 
-#define CPOLY_MAXPOOLSIZE_BYTES (1<<20)
+#define CPOLY_MAXPOOLSIZE_BYTES (4<<10)
 #else
 #if CPOLY_MAXPOOLSIZE_BYTES <= 32
 #undef CPOLY_MAXPOOLSIZE_BYTES
-#define CPOLY_MAXPOOLSIZE_BYTES (16<<10)
+#define CPOLY_MAXPOOLSIZE_BYTES (4<<10)
 #endif
 #endif
+
+#ifndef CPOLY_MAXIPOOLSIZE_BYTES 
+#define CPOLY_MAXIPOOLSIZE_BYTES (1<<10)
+#else
+#if CPOLY_MAXIPOOLSIZE_BYTES <= 32
+#undef CPOLY_MAXIPOOLSIZE_BYTES
+#define CPOLY_MAXIPOOLSIZE_BYTES (1<<10)
+#endif
+#endif
+
 
 // Used for bitsets and Marching Squares Grid
 // MSG: Olny 4 bits are used to represent a grid cell value (0-15)
@@ -144,17 +157,19 @@ typedef struct cpolyBitPool
 #define cpoly_setxy(p,s,n,x,y) { cpoly_setx(p,s,n,x); cpoly_sety(p,s,n,y); }
 #define CPOLY_IPOOL_0 0
 #define CPOLY_IPOOL_1 1
-#define CPOLY_IPOOL_COUNT 2
+#define CPOLY_IPOOL_2 2
+#define CPOLY_IPOOL_COUNT 3
 // non thread safe shared pools (vertex and index)
-unsigned char cpoly_pool_v[CPOLY_MAXPOOLSIZE_BYTES];
-unsigned char cpoly_pool_i[2][CPOLY_MAXPOOLSIZE_BYTES];
+unsigned char cpoly_pool_v[CPOLY_MAXIPOOLSIZE_BYTES];
 const int CPOLY_POOL_VMAX = CPOLY_MAXPOOLSIZE_BYTES/(sizeof(float)*2); // max no of vertices (x,y) in the pool
-const int CPOLY_POOL_IMAX= CPOLY_MAXPOOLSIZE_BYTES/sizeof(int); // max no of indices
 int cpoly_pool_vcount=0;
-int cpoly_pool_icount[CPOLY_IPOOL_COUNT]={0,0};
+
+unsigned char cpoly_pool_i[CPOLY_IPOOL_COUNT][CPOLY_MAXIPOOLSIZE_BYTES];
+const int CPOLY_POOL_IMAX= CPOLY_MAXIPOOLSIZE_BYTES/sizeof(int); // max no of indices
+int cpoly_pool_icount[CPOLY_IPOOL_COUNT]={0};
 
 //////////////////////////////////////////////////////////////////////////
-// forward decls
+// internal helper functions. forward decls
 //////////////////////////////////////////////////////////////////////////
 int   cpoly_max(int a, int b);
 int   cpoly_min(int a, int b);
@@ -163,6 +178,7 @@ void  cpoly_pool_add_vertex(float x, float y);
 void  cpoly_pool_add_index(int ipool, int ndx);
 void  cpoly_pool_get_vertex(int n, float* x, float* y);
 int   cpoly_pool_get_index(int ipool, int n);
+void  cpoly_pool_set_index(int ipool, int at, int value);
 void  cpoly_bitset_create(cpolyBitPool* bs, int nbits);
 void  cpoly_bitset_destroy(cpolyBitPool* bs);
 void  cpoly_bitset_set(cpolyBitPool* bs, int n, int value);
@@ -173,6 +189,13 @@ int   cpoly_msg_get(cpolyBitPool* rmg, int i, int j);
 void  cpoly_msg_set(cpolyBitPool* rmg, int i, int j, int val);
 float cpoly_msg_func(void* pts, int npts, int stride, float x, float y);
 int   cpoly_msg_cellvalue(float c0, float c1, float c2, float c3); //corners: bottomleft, bottomright, topright, topleft
+void  cpoly_pvs_create(cpolyBitPool* pvs, int npts);
+void  cpoly_pvs_destroy(cpolyBitPool* pvs);
+int   cpoly_pvs_get(cpolyBitPool* pvs, int i, int j);
+void  cpoly_pvs_set(cpolyBitPool* pvs, int i, int j, int v);
+void  cpoly_pvs(void* pts, int npts, int stride, cpolyBitPool* pvs);
+int   cpoly_is_inner_ray(void* pts, int npts, int stride, int i, int j);
+
 
 //////////////////////////////////////////////////////////////////////////
 // IMPLEMENTATION 
@@ -362,15 +385,15 @@ int __internal_cv_seg_isec_poly_closest(float x0, float y0, float x1, float y1, 
   return 1;
 }
 
-float g_rayOffset=0.0f;
+float cpoly_rayOffset=0.0f;
 int cpoly_cv_seg_isec_poly_closest(float x0, float y0, float x1, float y1, void* pts, int npts, int stride, float* ix, float* iy, int* edge)
 {
   float dx=0,dy=0;
-  if ( g_rayOffset!=0.0f )
+  if ( cpoly_rayOffset!=0.0f )
   {
     dx=x1-x0; dy=y1-y0;
-    x0 += dx*g_rayOffset; y0 += dy*g_rayOffset;
-    x1 -= dx*g_rayOffset; y1 -= dy*g_rayOffset;
+    x0 += dx*cpoly_rayOffset; y0 += dy*cpoly_rayOffset;
+    x1 -= dx*cpoly_rayOffset; y1 -= dy*cpoly_rayOffset;
   }
   return __internal_cv_seg_isec_poly_closest(x0,y0,x1,y1,pts,npts,stride,ix,iy,edge,0);
 }
@@ -378,11 +401,11 @@ int cpoly_cv_seg_isec_poly_closest(float x0, float y0, float x1, float y1, void*
 int cpoly_cv_seg_isec_poly_first(float x0, float y0, float x1, float y1, void* pts, int npts, int stride, float* ix, float* iy, int* edge)
 {
   float dx=0,dy=0;
-  if ( g_rayOffset!=0.0f )
+  if ( cpoly_rayOffset!=0.0f )
   {
     dx=x1-x0; dy=y1-y0;
-    x0 += dx*g_rayOffset; y0 += dy*g_rayOffset;
-    x1 -= dx*g_rayOffset; y1 -= dy*g_rayOffset;
+    x0 += dx*cpoly_rayOffset; y0 += dy*cpoly_rayOffset;
+    x1 -= dx*cpoly_rayOffset; y1 -= dy*cpoly_rayOffset;
   }
 
   return __internal_cv_seg_isec_poly_closest(x0,y0,x1,y1,pts,npts,stride,ix,iy,edge,1);
@@ -390,20 +413,25 @@ int cpoly_cv_seg_isec_poly_first(float x0, float y0, float x1, float y1, void* p
 
 void cpoly_pool_add_vertex(float x, float y)
 {
-  float* ptr = (float*)( cpoly_pool_v+cpoly_pool_vcount*sizeof(float)*2);
-
+  float* ptr;
 #ifdef _DEBUG
   if ( cpoly_pool_vcount >= CPOLY_POOL_VMAX )
     __debugbreak();
 #endif
+  ptr = (float*)( cpoly_pool_v+cpoly_pool_vcount*sizeof(float)*2);
   *(ptr++) = x; *ptr = y;
   ++cpoly_pool_vcount;
 }
 
-void cpoly_pool_add_index(int ipool,int ndx)
+void cpoly_pool_add_index(int ipool,int value)
 {
-  int* ptr = (int*)( cpoly_pool_i[ipool]+cpoly_pool_icount[ipool]*sizeof(int));
-  *ptr = ndx;
+  int* ptr;
+#ifdef _DEBUG
+  if (cpoly_pool_icount[ipool]>=CPOLY_POOL_IMAX)
+    __debugbreak(); // max no. of indices reach for this pool
+#endif
+  ptr = (int*)( cpoly_pool_i[ipool]+cpoly_pool_icount[ipool]*sizeof(int));
+  *ptr = value;
   ++cpoly_pool_icount[ipool];
 }
 
@@ -416,6 +444,18 @@ void cpoly_pool_get_vertex(int n, float* x, float* y)
 int cpoly_pool_get_index(int ipool,int n)
 {
   return *(int*)( cpoly_pool_i[ipool]+n*sizeof(int));
+}
+
+int cpoly_pool_get_index_last(int ipool)
+{
+  const int n=cpoly_pool_icount[ipool]-1;
+  return *(int*)( cpoly_pool_i[ipool]+n*sizeof(int));
+}
+
+void cpoly_pool_set_index(int ipool, int at, int value)
+{
+  int* ptr= (int*)( cpoly_pool_i[ipool]+at*sizeof(int));
+  *ptr = value;
 }
 
 void cpoly_bitset_create(cpolyBitPool* bs, int nbits)
@@ -433,7 +473,9 @@ void cpoly_bitset_destroy(cpolyBitPool* bs)
 
 void cpoly_bitset_set(cpolyBitPool* bs, int n, int value)
 {
-  bs->values[n>>3] ^= value<<(n%8);
+  // todo: use xor better
+  if(value) bs->values[n>>3] |= 1<<(n%8);
+  else      bs->values[n>>3] &= ~(1<<(n%8));
 }
 
 int cpoly_bitset_get(cpolyBitPool* bs, int n)
@@ -443,7 +485,7 @@ int cpoly_bitset_get(cpolyBitPool* bs, int n)
 }
 
 // assumes: convex polygons, no one inside another, no holes, clockwise????
-int cpoly_cv_union(void* pts0, int npts0, int stride0, void* pts1, int npts1, int stride1)
+int cpoly_cv_clip_union(void* pts0, int npts0, int stride0, void* pts1, int npts1, int stride1)
 {
   const int npts[2]={npts0,npts1};
   void* pts[2]={pts0,pts1};
@@ -523,7 +565,7 @@ int cpoly_min(int a, int b){ return a<b?a:b; }
 int cpoly_clampi(int v, int m, int M){ return (v<m)?m:(v>M?M:v); }
 
 // Result is Polygon0 - Polygon1
-int cpoly_cv_diff(void* pts0, int npts0, int stride0, void* pts1, int npts1, int stride1)
+int cpoly_cv_clip_diff(void* pts0, int npts0, int stride0, void* pts1, int npts1, int stride1)
 {
   const int npts[2]={npts0,npts1};
   void* pts[2]={pts0,pts1};
@@ -980,13 +1022,6 @@ void cpoly_aabb(void* pts, int npts, int stride, float* xmin, float* ymin, float
   }
 }
 
-// computes convex partition with Hertel-Mehlhorn algorithm
-int cpoly_convex_partition_HM(void* pts, int npts, int stride)
-{
-
-  return 0;
-}
-
 void cpoly_pvs_create(cpolyBitPool* pvs, int npts)
 {
   const int nbits = (int)ceilf(((float)npts-1.0f)*0.5f*npts);
@@ -1011,8 +1046,7 @@ int cpoly_pvs_get(cpolyBitPool* pvs, int i, int j)
 
   // adjacencies
   if ( j==((i+1)%pvs->stride) ) return 1;
-  ndx = i-1; if (ndx<0) ndx=pvs->stride-1;
-  if ( j==ndx ) return 1;
+  if ( j==((i-1+pvs->stride)%pvs->stride) ) return 1;
 
   // offset
   ndx = (int)( i * ( (2*pvs->stride - i - 3)*0.5f ) + j - 1 );
@@ -1072,7 +1106,7 @@ void cpoly_pvs(void* pts, int npts, int stride, cpolyBitPool* pvs)
   int i,j,r;
   float x0,y0,x1,y1;
 
-  g_rayOffset=0.001f;
+  cpoly_rayOffset=0.001f;
   for (i=0;i<npts; ++i )
   {
     // for my adjacent point, vis=1
@@ -1093,142 +1127,189 @@ void cpoly_pvs(void* pts, int npts, int stride, cpolyBitPool* pvs)
       }
     }
   }
-  g_rayOffset=0.0f;
+  cpoly_rayOffset=0.0f;
 }
 
-int cpoly_convex_partition(void* pts, int npts, int stride)
+int cpoly_point_in_triangle(float x, float y, float x0, float y0, float x1, float y1, float x2, float y2)
 {
-  int i, j, k, startp;
-  int n,m,v,nextp,initi;
-  int pre,nex;
+  const float A = 0.5f*cpoly_zcross(x0,y0,x1,y1,x2,y2);
+  const float sign=A<0.0f ? -1.0f : 1.0f;
+  const float s = (y0*x2 - x0*y2 + (y2-y0)*x + (x0-x2)*y)*sign;
+  const float t = (x0*y1 - y0*x1 + (y0-y1)*x + (x1-x0)*y)*sign;
+  return (s>=0.0f && t>=0.0f && (s+t)<=(2.0f*A*sign)) ? 1 : 0;
+}
+
+// assumes cpoly_pool_i[REFLEXS]
+int cpoly_EC_is_eartip(void* pts, int stride, int a, int b, int c)
+{
+  const int REFLEXS=CPOLY_IPOOL_1;
   float x0,y0,x1,y1,x2,y2;
+  float x,y;
+  int i,j;
+
+  cpoly_getxy(pts,stride,a,x0,y0);
+  cpoly_getxy(pts,stride,b,x1,y1);
+  cpoly_getxy(pts,stride,c,x2,y2);
+
+  for (i=0;i< cpoly_pool_icount[REFLEXS]; ++i)
+  {
+    j=cpoly_pool_get_index(REFLEXS,i);
+    if (j==a || j==b || j==c ) continue;
+    cpoly_getxy(pts,stride,j,x,y);
+    if ( cpoly_point_in_triangle(x,y,x0,y0,x1,y1,x2,y2) )
+    {
+      i=-1;
+      break;
+    }
+  }
+  return i==-1 ? 0 : 1;
+}
+
+// triangulate by Ear clipping method
+// http://www.geometrictools.com/Documentation/TriangulationByEarClipping.pdf
+int cpoly_triangulate_EC(void* pts, int npts, int stride) // clock wise
+{
+  int i,j,k,l,m,n,e,p;
+  int nei[2];
+  float x0,y0,x1,y1,x2,y2,x,y;
   float z;
-  cpolyBitPool pvs, used;
-  unsigned char* vcount=0;
+  const int CONVEXS=CPOLY_IPOOL_0;
+  const int TRIS=CPOLY_IPOOL_0;
+  const int REFLEXS=CPOLY_IPOOL_1;
+  const int EARS=CPOLY_IPOOL_2;
+  int *prior, *next; // two arrays with prior and next values
+  int *T=0,tc=0,*curTri=0; // triangle index list (npts-2)*3 elements, and triangle count
+  cpolyBitPool C;
 
-  if ( npts < 3 ) return 0;
-
-  cpoly_pvs_create(&pvs, npts);
-  cpoly_bitset_create(&used,npts);
-  cpoly_pvs(pts,npts,stride,&pvs);
-  vcount=(unsigned char*)calloc(npts,1);
-
-  cpoly_pool_icount[CPOLY_IPOOL_0]=cpoly_pool_icount[CPOLY_IPOOL_1]=0;
-  i=0; j=1; k=2;
-  do
+  // Check for convex/reflex  
+  cpoly_pool_icount[CONVEXS]=
+  cpoly_pool_icount[REFLEXS]=
+  cpoly_pool_icount[EARS]= 0;
+  prior = (int*)malloc(sizeof(int)*npts); // prior/next are lists to prior and next vertices for each one
+  next= (int*)malloc(sizeof(int)*npts);
+  cpoly_bitset_create(&C,npts);
+  for (i=0;i<npts;++i)
   {
-    startp=cpoly_pool_icount[CPOLY_IPOOL_0];
-    cpoly_pool_add_index(CPOLY_IPOOL_0,i); ++vcount[i];
-    cpoly_pool_add_index(CPOLY_IPOOL_0,j); ++vcount[j];
-    initi=i;  
-    nextp=-1;
-    while (k!=initi)
+    j=(i-1+npts)%npts;
+    k=(i+1)%npts;
+    prior[i]=j; next[i]=k; // initial list
+    cpoly_getxy(pts,stride,j,x0,y0);
+    cpoly_getxy(pts,stride,i,x1,y1);
+    cpoly_getxy(pts,stride,k,x2,y2);
+    z=cpoly_zcross(x0,y0,x1,y1,x2,y2);
+    if ( z<=0.0f )
     {
-      // k is visible for all vertices in our current convex poly?
-      v=1;
-      for (n=startp;n<cpoly_pool_icount[CPOLY_IPOOL_0] && v;++n)
+      cpoly_pool_add_index(CONVEXS, i);    
+      cpoly_bitset_set(&C,i,1);
+    }
+    else
+      cpoly_pool_add_index( REFLEXS, i);
+  } 
+
+  // build initial ear list
+  // for all convex vertices, gets triangle and checks only against reflex vertices 
+  // O(n^2) but performs well due only checks the reflex list
+  for (i=0;i<cpoly_pool_icount[CONVEXS];++i)
+  {
+    m=cpoly_pool_get_index(CONVEXS,i);
+    j=(m-1+npts)%npts;
+    k=(m+1)%npts;
+    if ( cpoly_EC_is_eartip(pts,stride,j,m,k) )
+      cpoly_pool_add_index(EARS,m);
+  }
+
+  // no ear tips found
+  if ( cpoly_pool_icount[EARS] == 0 )
+    goto end;
+
+  // Code to go removing Ears and updating lists
+  T = (int*)malloc(sizeof(int)*3*(npts-2)); curTri=T;
+  i=0;
+  while (i < cpoly_pool_icount[EARS] && tc<(npts-2) )
+  {
+    // ear and neighbs
+    e=cpoly_pool_get_index(EARS,i); 
+    j=prior[e]; k=next[e];
+
+    // remove ear, update prior/next lists
+    next[j] = k;
+    prior[k]= j;
+
+    // add triangle
+    *curTri++ = j; *curTri++ = e; *curTri++ = k;
+    ++tc;
+
+    // update neighbors (may change its type only if it was reflex)
+    nei[0]=j; nei[1]=k;
+    for (l=0;l<2;++l)
+    {
+      n=nei[l];
+      // is it a reflex?
+      if ( !cpoly_bitset_get(&C,n) )
       {
-        m = cpoly_pool_get_index(CPOLY_IPOOL_0,n);
-        v=cpoly_pvs_get(&pvs, m, k);
-      }
-    
-      // if it's visible, does it break the convexity if we add it?
-      if (v)
-      {
-        cpoly_getxy(pts,stride,i,x0,y0);
-        cpoly_getxy(pts,stride,j,x1,y1);
-        cpoly_getxy(pts,stride,k,x2,y2);
+        // test if n is convex (with prior[n], n, next[n])
+        cpoly_getxy(pts,stride, prior[n],x0,y0);
+        cpoly_getxy(pts,stride, n,x1,y1);
+        cpoly_getxy(pts,stride, next[n],x2,y2);
         z=cpoly_zcross(x0,y0,x1,y1,x2,y2);
-        if ( z<=0.0f )
+        if ( z<=0.0f ) 
         {
-          cpoly_pool_add_index(CPOLY_IPOOL_0,k);++vcount[k];
-          i=j; j=k;
-        }
-        else goto jumpvertex; // k was visible, but breaks convexity
-      }
-      else
-      {
-        jumpvertex:
-        // k wasn't visible
-        if ( nextp==-1 ) nextp=k;
-      }
-      // if initi and k are an edge of another convex part, stops here
-      for (n=0;n<cpoly_pool_icount[CPOLY_IPOOL_0]-1;++n)
-      {
-        if ( cpoly_pool_get_index(CPOLY_IPOOL_0,n) == initi && 
-             cpoly_pool_get_index(CPOLY_IPOOL_0,n+1) == k )
-        {
-          if ( nextp==-1 )
+          cpoly_bitset_set(&C,n,1); // reflex became convex
+          // move n from REFLEX ...
+          for (m=0;m<cpoly_pool_icount[REFLEXS];++m) 
           {
-            nextp=k;
-            v=0;
-            do
+            if ( cpoly_pool_get_index(REFLEXS,m) == n )
             {
-              nextp=(nextp+1)%npts;
-              ++v; if ( v==npts ) break;
-            }while ( cpoly_bitset_get(&used,nextp) && nextp!=initi || vcount[nextp]);
-            
-            if ( v==npts ) // no more points
-              nextp=-1;
+              cpoly_pool_set_index(REFLEXS, m, cpoly_pool_get_index_last(REFLEXS));
+              --cpoly_pool_icount[REFLEXS];
+              break;
+            }
           }
-          k=initi;
-          break;
+          // ...to CONVEX
+          cpoly_pool_add_index(CONVEXS,n);
+
+          // CAUTION: not sure if we have to do this out of the if(!cpoly-bitset...)
+          // check if <prior[n], n, next[n]> is an ear, so n is ear tip
+          if ( cpoly_EC_is_eartip(pts, stride, prior[n], n, next[n]) )
+            cpoly_pool_add_index(EARS,n); // new eartip
         }
       }
-
-      if ( k!=initi)
-      {
-        do
-        {
-          k=(k+1)%npts;
-        }while ( cpoly_bitset_get(&used,k) && k!=initi);
-      }
     }
 
-    cpoly_pool_add_index(CPOLY_IPOOL_1, cpoly_pool_icount[CPOLY_IPOOL_0]);
-    
-    // mark used for indices added that have adjacents already (this is ugly and expensive, todo:change)
-    for (n=0;n<cpoly_pool_icount[CPOLY_IPOOL_0];++n)
-    {
-      m=cpoly_pool_get_index(CPOLY_IPOOL_0,n);
-      if ( !cpoly_bitset_get(&used,m) )
-      {
-        pre=m-1; if (pre<0) pre=npts-1;
-        nex=(m+1)%npts;
-        if ( vcount[pre] && vcount[nex] )
-          cpoly_bitset_set(&used,m,1);
-      }
-    }
+    // next ear?
+    ++i;
+  }
 
-    if ( nextp!=-1 )
-    {
-      i = nextp-1; if (i<0) i=npts-1;
-      j = (i+1)%npts;
-      k = (j+1)%npts;
-    }
-  }while ( nextp!=-1 );
 
-  /*
-  V = Compute Visibility From Each Vertex to other Vertices
-  CP = {}
-
-  while ( k!=i )
+  // dump triangle list into cpoly_pool_i[TRIS]
+  // shouldn't be tc=(curTri-T)/(sizeof(int)*3) ? we can avoid tc
+  cpoly_pool_icount[TRIS]=0;
+  for (i=0;i<tc;++i)
   {
-    CP += {i,j}
-    Check if: 
-        a) i,j and j,k are convex
-        b) no intersection from all inner rays CP -> k
-    If ( a && b )
-        CP += k 
-        i=j, j=k
-    k = next vertex
-  }   
+    cpoly_pool_add_index(TRIS, T[i*3]);
+    cpoly_pool_add_index(TRIS, T[i*3+1]);
+    cpoly_pool_add_index(TRIS, T[i*3+2]);
+  }
+  /*
+  Build a list of convex points C
+  Build a list of reflex points R
+  Build a list of ear tips E
+
+  while (ear e in E)
+  {
+    remove e from E
+    add triangle with tip e (V[e-1], V[e], V[e+1]) 
+    check if neighbors changed from C<->R or they became ear
+  }
 
   */
-  free(vcount);
-  cpoly_bitset_destroy(&used);
-  cpoly_pvs_destroy(&pvs);
-  return 0;
+end:
+  cpoly_bitset_destroy(&C);
+  if (T) free(T);
+  free(next);
+  free(prior);
+  return tc;
 }
+
 
 #endif

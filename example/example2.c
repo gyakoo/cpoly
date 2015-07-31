@@ -91,7 +91,7 @@ void frame(GLFWwindow* window)
 	// Draw 
   if ( glfwGetKey(window,GLFW_KEY_SPACE)==GLFW_PRESS )
   {
-    cpoly_cv_union(g_convexpoly0, g_convexpolycount0, STRIDE, g_convexpoly1, g_convexpolycount1, STRIDE);
+    cpoly_cv_clip_union(g_convexpoly0, g_convexpolycount0, STRIDE, g_convexpoly1, g_convexpolycount1, STRIDE);
     glBegin(GL_LINE_LOOP);
     for ( i = 0; i < cpoly_pool_vcount; ++i )
     {
@@ -132,7 +132,7 @@ void frame(GLFWwindow* window)
   }
   else if ( glfwGetKey(window,GLFW_KEY_1)==GLFW_PRESS )
   {
-    cpoly_cv_diff(g_convexpoly0,g_convexpolycount0, STRIDE, g_convexpoly1, g_convexpolycount1, STRIDE);    
+    cpoly_cv_clip_diff(g_convexpoly0,g_convexpolycount0, STRIDE, g_convexpoly1, g_convexpolycount1, STRIDE);    
     k=0;
     for ( i = 0; i < cpoly_pool_icount[CPOLY_IPOOL_0]; ++i ) // for all parts
     {

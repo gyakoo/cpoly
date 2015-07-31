@@ -38,8 +38,8 @@ void randompoly()
   for ( i=0; i < g_polycount;++i, a-=step)
   {
     l = 2.0f + 30.0f*((float)rand()/RAND_MAX);
-    x=cos(a)*l;
-    y=sin(a)*l;
+    x=cosf(a)*l;
+    y=sinf(a)*l;
     g_polygon[i*2]=x;
     g_polygon[i*2+1]=y;
   }
@@ -48,7 +48,7 @@ void randompoly()
 void frame(GLFWwindow* window)
 {
 	int width = 0, height = 0;
-  int i,j,k;
+  int i,j,k,l=0;
   static float globalTime=0.0f;
 //  float x,y;
 
@@ -92,33 +92,33 @@ void frame(GLFWwindow* window)
 
   if ( glfwGetKey(window,GLFW_KEY_2)==GLFW_PRESS )
   {
-    cpoly_convex_partition(g_polygon,g_polycount,sizeof(float)*2);
 
-    k=0;
-    for (i=0;i<cpoly_pool_icount[CPOLY_IPOOL_1];++i) // for all partitions
-    {
-      glBegin(GL_LINE_LOOP);     
-      for ( j=k; j<cpoly_pool_get_index(CPOLY_IPOOL_1,i);++j)
-      {
-        k=cpoly_pool_get_index(CPOLY_IPOOL_0,j);
-        glVertex2f(g_polygon[k*2],g_polygon[k*2+1]);
-      }
-      k=j;
-      glEnd();
-    }
-
+    cpoly_triangulate_EC(g_polygon,g_polycount,sizeof(float)*2);
     if ( fillpoly )
     {
-      k=0;
-      for (i=0;i<cpoly_pool_icount[CPOLY_IPOOL_1];++i) // for all partitions
+      glBegin(GL_TRIANGLES);
+      for (i=0;i<cpoly_pool_icount[CPOLY_IPOOL_0]/3;++i) // for all partitions
       {
-        glBegin(GL_TRIANGLE_FAN);
-        for ( j=k; j<cpoly_pool_get_index(CPOLY_IPOOL_1,i);++j)
-        {
-          k=cpoly_pool_get_index(CPOLY_IPOOL_0,j);
-          glVertex2f(g_polygon[k*2],g_polygon[k*2+1]);
-        }
-        k=j;
+        j=cpoly_pool_get_index(CPOLY_IPOOL_0,i*3);
+        k=cpoly_pool_get_index(CPOLY_IPOOL_0,i*3+1);
+        l=cpoly_pool_get_index(CPOLY_IPOOL_0,i*3+2);
+        glVertex2f( g_polygon[j*2], g_polygon[j*2+1] );
+        glVertex2f( g_polygon[k*2], g_polygon[k*2+1] );
+        glVertex2f( g_polygon[l*2], g_polygon[l*2+1] );
+      }
+      glEnd();
+    }
+    else
+    {
+      for (i=0;i<cpoly_pool_icount[CPOLY_IPOOL_0]/3;++i) // for all partitions
+      {
+        glBegin(GL_LINE_LOOP);
+        j=cpoly_pool_get_index(CPOLY_IPOOL_0,i*3);
+        k=cpoly_pool_get_index(CPOLY_IPOOL_0,i*3+1);
+        l=cpoly_pool_get_index(CPOLY_IPOOL_0,i*3+2);
+        glVertex2f( g_polygon[j*2], g_polygon[j*2+1] );
+        glVertex2f( g_polygon[k*2], g_polygon[k*2+1] );
+        glVertex2f( g_polygon[l*2], g_polygon[l*2+1] );
         glEnd();
       }
     }
