@@ -20,7 +20,7 @@
 #define SCREENINVR (1.f/((float)SCREENHEIGHT/SCREENWIDTH))
 
 // original polygon to be decomposed
-float g_polygon[12*2]={0};
+float g_polygon[24*2]={0};
 const int g_polycount= sizeof(g_polygon)/(sizeof(float)*2);
 int fillpoly=0;
 
@@ -31,7 +31,7 @@ void randompoly()
 {
   int i;
   float step=3.14159f*2.0f/g_polycount;
-  float a=0.0f;
+  float a=3.14159f*2.0f;
   float x,y;
   float l;
 

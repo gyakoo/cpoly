@@ -1140,9 +1140,8 @@ int cpoly_point_in_triangle(float x, float y, float x0, float y0, float x1, floa
 }
 
 // assumes cpoly_pool_i[REFLEXS]
-int cpoly_EC_is_eartip(void* pts, int stride, int a, int b, int c)
+int cpoly_EC_is_eartip(void* pts, int stride, int* indices, int icount, int a, int b, int c)
 {
-  const int REFLEXS=CPOLY_IPOOL_1;
   float x0,y0,x1,y1,x2,y2;
   float x,y;
   int i,j;
@@ -1151,9 +1150,9 @@ int cpoly_EC_is_eartip(void* pts, int stride, int a, int b, int c)
   cpoly_getxy(pts,stride,b,x1,y1);
   cpoly_getxy(pts,stride,c,x2,y2);
 
-  for (i=0;i< cpoly_pool_icount[REFLEXS]; ++i)
+  for (i=0;i< icount; ++i)
   {
-    j=cpoly_pool_get_index(REFLEXS,i);
+    j=indices[i];
     if (j==a || j==b || j==c ) continue;
     cpoly_getxy(pts,stride,j,x,y);
     if ( cpoly_point_in_triangle(x,y,x0,y0,x1,y1,x2,y2) )
@@ -1214,7 +1213,7 @@ int cpoly_triangulate_EC(void* pts, int npts, int stride) // clock wise
     m=cpoly_pool_get_index(CONVEXS,i);
     j=(m-1+npts)%npts;
     k=(m+1)%npts;
-    if ( cpoly_EC_is_eartip(pts,stride,j,m,k) )
+    if ( cpoly_EC_is_eartip(pts,stride, (int*)cpoly_pool_i[REFLEXS], cpoly_pool_icount[REFLEXS], j,m,k) )
       cpoly_pool_add_index(EARS,m);
   }
 
@@ -1270,7 +1269,7 @@ int cpoly_triangulate_EC(void* pts, int npts, int stride) // clock wise
 
           // CAUTION: not sure if we have to do this out of the if(!cpoly-bitset...)
           // check if <prior[n], n, next[n]> is an ear, so n is ear tip
-          if ( cpoly_EC_is_eartip(pts, stride, prior[n], n, next[n]) )
+          if ( cpoly_EC_is_eartip(pts, stride, (int*)cpoly_pool_i[REFLEXS], cpoly_pool_icount[REFLEXS], prior[n], n, next[n]) )
             cpoly_pool_add_index(EARS,n); // new eartip
         }
       }
@@ -1290,19 +1289,7 @@ int cpoly_triangulate_EC(void* pts, int npts, int stride) // clock wise
     cpoly_pool_add_index(TRIS, T[i*3+1]);
     cpoly_pool_add_index(TRIS, T[i*3+2]);
   }
-  /*
-  Build a list of convex points C
-  Build a list of reflex points R
-  Build a list of ear tips E
-
-  while (ear e in E)
-  {
-    remove e from E
-    add triangle with tip e (V[e-1], V[e], V[e+1]) 
-    check if neighbors changed from C<->R or they became ear
-  }
-
-  */
+  
 end:
   cpoly_bitset_destroy(&C);
   if (T) free(T);
