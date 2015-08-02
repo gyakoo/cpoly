@@ -1,8 +1,8 @@
 /*
 Disclaimer:
-THIS IS WORK IN PROGRESS, SOME FUNCTIONS AREN'T FINISHED AND/OR HEAVILY TESTED FOR BEHAVIOR AND PERFORMANCE.
+THIS IS WORK IN PROGRESS, SOME FUNCTIONS AREN'T HEAVILY TESTED FOR BEHAVIOR AND PERFORMANCE.
 
-ALL functions assume Clock Wise ordering of poly vertices
+ALL functions where vertice order is important, it assumes Clock Wise ordering
  */
 
 #ifndef CPOLY_H
@@ -60,7 +60,8 @@ extern "C" {
   // geometric center computation (center of mass or centroid)
   void cpoly_poly_centroid(void* pts, int npts, int stride, float* cx, float* cy);
 
-  // computes convex hull of a polygon. Returns no of indices to vertices in original polygon, use cpoly_pool_get_index
+  // computes convex hull of a polygon. Returns no of indices to vertices in original polygon, use cpoly_pool_get_index.
+  // Gift wrapping algorithm
   int cpoly_convex_hull(void* pts, int npts, int stride);
 
   // computes axis aligned bounding box
@@ -72,7 +73,10 @@ extern "C" {
   int cpoly_marchingsq_nointerp(void* pts, int npts, int stride, float sqside);
 
   // triangulate by Ear Clipping method
-  int cpoly_triangulate_EC(void* pts, int npts, int stride);
+  int cpoly_triangulate_EC(void* pts, int npts, int stride, void* reserved);
+
+  // Hertel-Mehlhorn partition algorithm. Produces 
+  int cpoly_partition_HM(void* pts, int npts, int stride);
 
 
   /* NOTES
@@ -104,9 +108,7 @@ extern "C" {
 #ifdef CPOLY_IMPLEMENTATION
 
 /*
-TODO: 
-  [DONE] http://jamie-wong.com/2014/08/19/metaballs-and-marching-squares/
-  http://www.dma.fi.upm.es/docencia/trabajosfindecarrera/programas/geometriacomputacional/PiezasConvex/algoritmo_i.html
+Nice:   
   http://bl.ocks.org/mbostock
 */
 
@@ -117,16 +119,16 @@ TODO:
 #endif
 
 #ifndef CPOLY_MAXPOOLSIZE_BYTES 
-#define CPOLY_MAXPOOLSIZE_BYTES (4<<10)
+#define CPOLY_MAXPOOLSIZE_BYTES (6<<10)
 #else
 #if CPOLY_MAXPOOLSIZE_BYTES <= 32
 #undef CPOLY_MAXPOOLSIZE_BYTES
-#define CPOLY_MAXPOOLSIZE_BYTES (4<<10)
+#define CPOLY_MAXPOOLSIZE_BYTES (2<<10)
 #endif
 #endif
 
 #ifndef CPOLY_MAXIPOOLSIZE_BYTES 
-#define CPOLY_MAXIPOOLSIZE_BYTES (1<<10)
+#define CPOLY_MAXIPOOLSIZE_BYTES (6<<10)
 #else
 #if CPOLY_MAXIPOOLSIZE_BYTES <= 32
 #undef CPOLY_MAXIPOOLSIZE_BYTES
@@ -159,6 +161,8 @@ typedef struct cpolyBitPool
 #define CPOLY_IPOOL_1 1
 #define CPOLY_IPOOL_2 2
 #define CPOLY_IPOOL_COUNT 3
+#define CPOLY_PI 3.141592f
+#define CPOLY_2PI (3.141592f*2.0f)
 // non thread safe shared pools (vertex and index)
 unsigned char cpoly_pool_v[CPOLY_MAXIPOOLSIZE_BYTES];
 const int CPOLY_POOL_VMAX = CPOLY_MAXPOOLSIZE_BYTES/(sizeof(float)*2); // max no of vertices (x,y) in the pool
@@ -469,6 +473,12 @@ void cpoly_bitset_destroy(cpolyBitPool* bs)
   bs->stride=0;
   free(bs->values);
   bs->values=0;
+}
+
+void cpoly_bitset_reset(cpolyBitPool* bs)
+{
+  int i;
+  for (i=0;i<bs->stride;++i) bs->values[i]=0;
 }
 
 void cpoly_bitset_set(cpolyBitPool* bs, int n, int value)
@@ -859,6 +869,7 @@ int cpoly_msg_cellvalue(float c0, float c1, float c2, float c3)
 }
 
 // computes marching squares of the points given by the circles (x0,y0,r0), (x1,y1,r1)...
+// http://jamie-wong.com/2014/08/19/metaballs-and-marching-squares/
 int cpoly_marchingsq_nointerp(void* pts, int npts, int stride, float sqside)
 {
   int i,j,k,mini,minj,dir;
@@ -1164,13 +1175,24 @@ int cpoly_EC_is_eartip(void* pts, int stride, int* indices, int icount, int a, i
   return i==-1 ? 0 : 1;
 }
 
+typedef struct cpolyDiag
+{
+  short ep0, ep1;
+}cpolyDiag;
+
+typedef struct cpolyTriOut
+{
+  cpolyDiag* diags;
+  cpolyBitPool C; // convex points, if not here it's a reflex/concave point
+}cpolyTriOut;
+
 // triangulate by Ear clipping method
 // http://www.geometrictools.com/Documentation/TriangulationByEarClipping.pdf
-int cpoly_triangulate_EC(void* pts, int npts, int stride) // clock wise
+int cpoly_triangulate_EC(void* pts, int npts, int stride, void* _triout) // clock wise
 {
-  int i,j,k,l,m,n,e,p;
+  int i,j,k,l,m,n,e;
   int nei[2];
-  float x0,y0,x1,y1,x2,y2,x,y;
+  float x0,y0,x1,y1,x2,y2;
   float z;
   const int CONVEXS=CPOLY_IPOOL_0;
   const int TRIS=CPOLY_IPOOL_0;
@@ -1179,6 +1201,10 @@ int cpoly_triangulate_EC(void* pts, int npts, int stride) // clock wise
   int *prior, *next; // two arrays with prior and next values
   int *T=0,tc=0,*curTri=0; // triangle index list (npts-2)*3 elements, and triangle count
   cpolyBitPool C;
+  cpolyTriOut* triout = (cpolyTriOut*)_triout;
+
+  if ( triout )
+    triout->diags = (cpolyDiag*)malloc(sizeof(cpolyDiag)*(npts-3));
 
   // Check for convex/reflex  
   cpoly_pool_icount[CONVEXS]=
@@ -1186,7 +1212,7 @@ int cpoly_triangulate_EC(void* pts, int npts, int stride) // clock wise
   cpoly_pool_icount[EARS]= 0;
   prior = (int*)malloc(sizeof(int)*npts); // prior/next are lists to prior and next vertices for each one
   next= (int*)malloc(sizeof(int)*npts);
-  cpoly_bitset_create(&C,npts);
+  cpoly_bitset_create(&C,npts); if ( triout ) cpoly_bitset_create(&triout->C,npts);
   for (i=0;i<npts;++i)
   {
     j=(i-1+npts)%npts;
@@ -1200,6 +1226,7 @@ int cpoly_triangulate_EC(void* pts, int npts, int stride) // clock wise
     {
       cpoly_pool_add_index(CONVEXS, i);    
       cpoly_bitset_set(&C,i,1);
+      if ( triout ) cpoly_bitset_set(&triout->C,i,1);
     }
     else
       cpoly_pool_add_index( REFLEXS, i);
@@ -1224,7 +1251,7 @@ int cpoly_triangulate_EC(void* pts, int npts, int stride) // clock wise
   // Code to go removing Ears and updating lists
   T = (int*)malloc(sizeof(int)*3*(npts-2)); curTri=T;
   i=0;
-  while (i < cpoly_pool_icount[EARS] && tc<(npts-2) )
+  while (i < cpoly_pool_icount[EARS] && tc<(npts-3) ) // tc<(npts-3) is to loop until tc=npts-2
   {
     // ear and neighbs
     e=cpoly_pool_get_index(EARS,i); 
@@ -1236,6 +1263,7 @@ int cpoly_triangulate_EC(void* pts, int npts, int stride) // clock wise
 
     // add triangle
     *curTri++ = j; *curTri++ = e; *curTri++ = k;
+    if (triout) { triout->diags[tc].ep0=(short)j; triout->diags[tc].ep1=(short)k; } 
     ++tc;
 
     // update neighbors (may change its type only if it was reflex)
@@ -1267,7 +1295,6 @@ int cpoly_triangulate_EC(void* pts, int npts, int stride) // clock wise
           // ...to CONVEX
           cpoly_pool_add_index(CONVEXS,n);
 
-          // CAUTION: not sure if we have to do this out of the if(!cpoly-bitset...)
           // check if <prior[n], n, next[n]> is an ear, so n is ear tip
           if ( cpoly_EC_is_eartip(pts, stride, (int*)cpoly_pool_i[REFLEXS], cpoly_pool_icount[REFLEXS], prior[n], n, next[n]) )
             cpoly_pool_add_index(EARS,n); // new eartip
@@ -1278,7 +1305,6 @@ int cpoly_triangulate_EC(void* pts, int npts, int stride) // clock wise
     // next ear?
     ++i;
   }
-
 
   // dump triangle list into cpoly_pool_i[TRIS]
   // shouldn't be tc=(curTri-T)/(sizeof(int)*3) ? we can avoid tc
@@ -1298,5 +1324,269 @@ end:
   return tc;
 }
 
+float* cpoly_hm_angledists=0;
+int cpoly_HM_sortdiag(const void* _a, const void* _b)
+{
+  const int a = *(int*)_a;
+  const int b = *(int*)_b;
+  return (int)ceilf( cpoly_hm_angledists[a] - cpoly_hm_angledists[b] );
+}
+
+#define cpoly_hm_otherdiagv(di,v) (di->ep0==v?di->ep1:di->ep0)
+int cpoly_HM_is_diag_essential(void* pts,int npts,int stride, cpolyDiag* diags,int* dpv,int d, int v)
+{
+  int I = (v-1+npts)%npts;
+  int F = (v+1)%npts;
+  int last = 0;
+  int j,k;
+  cpolyDiag* diag;
+  float x0,y0,x1,y1,x2,y2,z;
+
+  // get index to last diag in dpv
+  last = dpv[0];
+  if ( last > 1 )
+  {
+    for (j=1;j<last+1;++j) if ( dpv[j]==d ) break;
+
+    // if d is the first diag for v
+    if ( d==dpv[1] )
+    {
+      diag = diags+dpv[2];
+      F = cpoly_hm_otherdiagv(diag,v);
+    }
+    // or d is the last diag for v
+    else if ( d==dpv[last] )
+    {
+      diag = diags+dpv[last-1];
+      I = cpoly_hm_otherdiagv(diag,v);
+    }
+    // otherwise
+    else
+    {
+      diag = diags+dpv[j-1];
+      I = cpoly_hm_otherdiagv(diag,v);
+      diag = diags+dpv[j+1];
+      F = cpoly_hm_otherdiagv(diag,v);
+    }
+  }
+
+  // essential if angle between v,I and v,F is concave
+  cpoly_getxy(pts,stride, I,x0,y0);
+  cpoly_getxy(pts,stride, v,x1,y1);
+  cpoly_getxy(pts,stride, F,x2,y2);
+  z=cpoly_zcross(x0,y0,x1,y1,x2,y2);
+  return z>0.0f;
+}
+
+void cpoly_hm_remove_dpv(int* dpv, int d)
+{
+  const int n=dpv[0];
+  int i;
+
+  for (i=1;i<n+1;++i)
+    if ( dpv[i]==d )
+      break;
+
+  for (;i<n;++i)
+    dpv[i]=dpv[i+1];
+
+  dpv[0]=n-1;
+}
+
+// Hertel-Mehlhorn algorithm
+// http://www.dma.fi.upm.es/docencia/trabajosfindecarrera/programas/geometriacomputacional/PiezasConvex/algoritmo_i.html
+int cpoly_partition_HM(void* pts, int npts, int stride)
+{
+  cpolyTriOut triout={0};
+  int nodef;
+  int i,j,k,d,l,iters;
+  cpolyBitPool NODEF, ESS;
+  int** dpv;
+  cpolyDiag* diag;
+  const int diagCount=npts-3;
+  float x0,y0,x1,y1,x2,y2;
+  float a0,a1;
+  int* essentials, esscount;
+
+  // first triangulate to get diagonals
+  cpoly_triangulate_EC(pts, npts, stride, &triout);
+  cpoly_bitset_create(&ESS, diagCount);
+  cpoly_bitset_create(&NODEF, diagCount);
+
+  // diagonals per vertex (reuse memory from pool[0])
+  {
+    // first count no of diagonals for each vertex
+    dpv = (int**)cpoly_pool_i[CPOLY_IPOOL_2];
+    for ( i=0;i<npts;++i )
+    {
+      dpv[i]=0;
+      for (d=0;d<diagCount;++d)
+      {
+        cpoly_bitset_set(&NODEF, d, 1);
+        if (triout.diags[d].ep0==i || triout.diags[d].ep1==i)
+        {
+          dpv[i]=(int*)(((int)dpv[i])+1);
+        }
+      }
+    }
+    
+    // assign consecutive memory for each dpv[i]>0
+    nodef = sizeof(int*)*npts;
+    for (i=0;i<npts;++i)
+    {
+      if ( !dpv[i] ) continue;
+      j=(int)(dpv[i])+1;
+      dpv[i] = (int*)(cpoly_pool_i[CPOLY_IPOOL_2]+nodef);
+      nodef += sizeof(int)*j;
+      dpv[i][0]=j-1; j=1;
+      for (d=0;d<diagCount;++d)
+        if (triout.diags[d].ep0==i || triout.diags[d].ep1==i )
+          dpv[i][j++] = d;
+    }
+    essentials=(int*)(cpoly_pool_i[CPOLY_IPOOL_2]+nodef);
+    esscount=0;
+  }
+
+  // sort diagonals per vertex by angle distance to initial edge
+  {
+    cpoly_hm_angledists=(float*)cpoly_pool_v;
+    for (i=0;i<npts;++i)
+    {
+      if ( !dpv[i] ) continue;
+      // angle for prior edge to vertex i
+      cpoly_getxy(pts,stride,i,x0,y0);
+      cpoly_getxy(pts,stride,((i-1+npts)%npts),x1,y1);
+      a0=atan2f(y1-y0, x1-x0); 
+      if ( a0<0.0f ) a0+=CPOLY_2PI;
+
+      // compute angledistances for all diagonals of this vertex i
+      for (j=0;j<dpv[i][0];++j)
+      {
+        d = dpv[i][j+1];
+        diag = triout.diags+d;
+        k = cpoly_hm_otherdiagv(diag,i); // other endpoint
+        cpoly_getxy(pts,stride,k,x2,y2);
+        a1=atan2f(y2-y0,x2-x0); if ( a1<0.0f ) a1+=CPOLY_2PI;
+        a1-=a0; if (a1<0.0f) a1+=CPOLY_2PI;
+        cpoly_hm_angledists[d]=a1;
+      }
+      // sort by angledistance
+      qsort(dpv[i]+1, dpv[i][0], sizeof(int), cpoly_HM_sortdiag);
+    }
+  }
+  
+  // while there are no defined diagonals yet
+  cpoly_pool_icount[CPOLY_IPOOL_1]=0;
+  nodef = diagCount;
+  iters=-1;
+  while ( nodef )
+  {
+    ++iters;
+    for (i=0;i<npts;++i) // for all vertices
+    {
+      // for all non-defined diagonals of vertex i
+      if ( !dpv[i] ) continue;
+      for(j=0;j<dpv[i][0];++j)
+      {
+        // is it non-defined?
+        d = dpv[i][j+1];
+        if ( cpoly_bitset_get(&NODEF,d) )
+        {
+          diag = triout.diags+d;
+          // is it convex or concave
+          if ( cpoly_bitset_get(&triout.C,i) ) 
+          {
+            // vertex i is CONVEX, and its diagonal d no-defined
+            // get vertex at other end
+otherep:
+            k = cpoly_hm_otherdiagv(diag,i);            
+            l = cpoly_HM_is_diag_essential(pts,npts,stride,triout.diags, dpv[k], d, k);// is diag essential for other vertex k?
+            cpoly_bitset_set(&ESS,d,l); // will be set as essential or not
+            cpoly_bitset_set(&NODEF,d,0); // is defined already (essential or not, but defined)
+            if (l)
+            {
+              essentials[esscount++]=d;
+            }
+            else
+            {
+              cpoly_hm_remove_dpv(dpv[i], d);
+              cpoly_hm_remove_dpv(dpv[k], d); // it's defined for both vertices, so remove from both lists
+            }
+            --nodef;                        
+          }
+          else 
+          {
+            // vertex i is CONCAVE, and its diagonal d no-defined
+            if ( cpoly_HM_is_diag_essential(pts,npts,stride,triout.diags, dpv[i], d,i) ) // is diag essential for me?
+            {
+              cpoly_bitset_set(&ESS,d,1); // will be set as essential
+              cpoly_bitset_set(&NODEF,d,0); // is defined already (essential)
+              essentials[esscount++]=d;
+              --nodef;
+            } 
+            else if ( iters>1 )
+            {
+              // no essential, and we're not in the first iteration, check now the other endpoint
+              goto otherep;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // we got in IPOOL_2 all the essential diagonals
+  cpoly_bitset_reset(&triout.C); // reuse to mark used vertices
+  cpoly_pool_icount[CPOLY_IPOOL_0]=cpoly_pool_icount[CPOLY_IPOOL_1]=0;
+  for (j=0;j<esscount;++j)
+  {
+    d=essentials[j];
+    diag=triout.diags+d;
+    i=diag->ep0; k=diag->ep1;
+    if (diag->ep0 > diag->ep1){ l=i; i=k; k=l; }
+    while (i!=k)
+    {
+      cpoly_pool_add_index(CPOLY_IPOOL_0,i); cpoly_bitset_set(&triout.C,i,1);
+      i=(i+1)%npts;
+    }
+    cpoly_pool_add_index(CPOLY_IPOOL_0,k); cpoly_bitset_set(&triout.C,k,1); // add last vertex    
+    cpoly_pool_add_index(CPOLY_IPOOL_1, cpoly_pool_icount[CPOLY_IPOOL_0]); // count array 
+  }
+
+  // final part
+  i=0; while ( i<npts && cpoly_bitset_get(&triout.C,i) ) {++i;}
+  cpoly_bitset_reset(&triout.C); // reuse to mark used diagonals
+  k=i;
+  do
+  {
+    cpoly_pool_add_index(CPOLY_IPOOL_0,i);
+    if ( dpv[i] && dpv[i][0] )  // if essential diagonals
+    {
+      j=1;
+      while ( cpoly_bitset_get(&triout.C,dpv[i][j]) && j<=dpv[i][0] )
+        ++j;
+      if ( j<=dpv[i][0] )
+      {
+        diag=triout.diags+dpv[i][j];
+        cpoly_bitset_set(&triout.C, dpv[i][j],1);
+        i=cpoly_hm_otherdiagv(diag,i);  // continue to the endpoint
+      } else 
+        goto incv;
+    }
+    else
+    {
+      incv:
+      i=(i+1)%npts;
+    }
+  }while(i!=k);
+  cpoly_pool_add_index(CPOLY_IPOOL_1, cpoly_pool_icount[CPOLY_IPOOL_0]); // count array 
+
+  // dealloc
+  cpoly_bitset_destroy(&NODEF);
+  cpoly_bitset_destroy(&ESS);
+  free(triout.diags);
+  cpoly_bitset_destroy(&triout.C);
+  return 0;
+}
 
 #endif
