@@ -23,8 +23,8 @@
 #define SCREENHEIGHT 600
 #define SCREENINVR (1.f/((float)SCREENHEIGHT/SCREENWIDTH))
 #define MINRND 5
-#define RANGRND 30.0f
-#define POLYPOINTS 12
+#define RANGRND 35.0f
+#define POLYPOINTS 24
 
 // original polygon to be decomposed
 float g_polygon[POLYPOINTS*2]={0};

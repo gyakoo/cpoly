@@ -1555,31 +1555,34 @@ otherep:
 
   // final part
   i=0; while ( i<npts && cpoly_bitset_get(&triout.C,i) ) {++i;}
-  cpoly_bitset_reset(&triout.C); // reuse to mark used diagonals
-  k=i;
-  do
+  if ( i<npts )
   {
-    cpoly_pool_add_index(CPOLY_IPOOL_0,i);
-    if ( dpv[i] && dpv[i][0] )  // if essential diagonals
+    cpoly_bitset_reset(&triout.C); // reuse to mark used diagonals
+    k=i;
+    do
     {
-      j=1;
-      while ( cpoly_bitset_get(&triout.C,dpv[i][j]) && j<=dpv[i][0] )
-        ++j;
-      if ( j<=dpv[i][0] )
+      cpoly_pool_add_index(CPOLY_IPOOL_0,i);
+      if ( dpv[i] && dpv[i][0] )  // if essential diagonals
       {
-        diag=triout.diags+dpv[i][j];
-        cpoly_bitset_set(&triout.C, dpv[i][j],1);
-        i=cpoly_hm_otherdiagv(diag,i);  // continue to the endpoint
-      } else 
-        goto incv;
-    }
-    else
-    {
-      incv:
-      i=(i+1)%npts;
-    }
-  }while(i!=k);
-  cpoly_pool_add_index(CPOLY_IPOOL_1, cpoly_pool_icount[CPOLY_IPOOL_0]); // count array 
+        j=1;
+        while ( cpoly_bitset_get(&triout.C,dpv[i][j]) && j<=dpv[i][0] )
+          ++j;
+        if ( j<=dpv[i][0] )
+        {
+          diag=triout.diags+dpv[i][j];
+          cpoly_bitset_set(&triout.C, dpv[i][j],1);
+          i=cpoly_hm_otherdiagv(diag,i);  // continue to the endpoint
+        } else 
+          goto incv;
+      }
+      else
+      {
+        incv:
+        i=(i+1)%npts;
+      }
+    }while(i!=k);
+    cpoly_pool_add_index(CPOLY_IPOOL_1, cpoly_pool_icount[CPOLY_IPOOL_0]); // count array 
+  }
 
   // dealloc
   cpoly_bitset_destroy(&NODEF);
