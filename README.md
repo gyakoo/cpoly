@@ -31,11 +31,13 @@ Algorithms are work in progress, aka not optimized enough or production quality 
 
   // Union of convex polygons. Returns no. of vertices to be accessed with cpoly_pool_get_vertex
   // assumes: convex polygons, intersecting, no one inside another, no holes.
+  // somehow based on Sutherland–Hodgman algorithm
   int cpoly_cv_clip_union(void* pts0, int npts0, int stride0, void* pts1, int npts1, int stride1);
   
   // Difference of convex polygons, returns no. of parts generated
   // You got the parts offsets starting from part 1 in cpoly_pool_i indices
   // All the vertices generated in cpoly_pool_v (See NOTES how to get results.)  
+  // somehow based on Sutherland–Hodgman algorithm
   int cpoly_cv_clip_diff(void* pts0, int npts0, int stride0, void* pts1, int npts1, int stride1);
 
   // rotate around a pivot, NULL to rotate around center.
