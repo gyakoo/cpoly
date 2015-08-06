@@ -3,9 +3,8 @@ Testing some algorithms with polygons.<br/>
 Sample in OpenGL provided, which depends on GLFW (included and also in https://github.com/glfw/glfw).
 
 # Some operations
-Algorithms are work in progress, aka not optimized enough or production quality code.
 
-```c++
+```c
     // Returns 0 if it's not convex. 1 for CW for CCW
   int cpoly_is_convex(void* pts, int npts, int stride);
 
