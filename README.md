@@ -1,6 +1,5 @@
 # cpoly
 Testing some algorithms with polygons.<br/>
-Sample in OpenGL provided, which depends on GLFW (included and also in https://github.com/glfw/glfw).
 
 # Some operations
 
@@ -21,8 +20,8 @@ Sample in OpenGL provided, which depends on GLFW (included and also in https://g
   // Return 1 if point x,y is inside the triangle given by x0,y0 .. x1,y1 .. x2,y2
   int cpoly_point_in_triangle(float x, float y, float x0, float y0, float x1, float y1, float x2, float y2);
   
-    // calculates the bounding polygons for a set of circle points (x,y,radius)...using marching squares algorithm with no interpolation
-  // sqside is the side of the square
+  // calculates the bounding polygons for a set of circle points (x,y,radius)...using marching squares algorithm
+  // sqside is the side of the square. no interpolation.
   // returns number of polygons created. See NOTES for how to get the results.
   int cpoly_marchingsq_nointerp(void* pts, int npts, int stride, float sqside);
 
