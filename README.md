@@ -1,5 +1,6 @@
 # cpoly
-Testing some algorithms with polygons.<br/>
+Single header with code for testing some algorithms with polygons 2D.<br/>
+<a href="src/cpoly.h">cpoly.h</a>
 
 # Some operations
 
