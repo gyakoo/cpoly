@@ -20,6 +20,17 @@ Sample in OpenGL provided, which depends on GLFW (included and also in https://g
 
   // Return 1 if point x,y is inside the triangle given by x0,y0 .. x1,y1 .. x2,y2
   int cpoly_point_in_triangle(float x, float y, float x0, float y0, float x1, float y1, float x2, float y2);
+  
+    // calculates the bounding polygons for a set of circle points (x,y,radius)...using marching squares algorithm with no interpolation
+  // sqside is the side of the square
+  // returns number of polygons created. See NOTES for how to get the results.
+  int cpoly_marchingsq_nointerp(void* pts, int npts, int stride, float sqside);
+
+  // triangulate by Ear Clipping method
+  int cpoly_triangulate_EC(void* pts, int npts, int stride, void* reserved);
+
+  // Hertel-Mehlhorn partition algorithm. Produces 
+  int cpoly_partition_HM(void* pts, int npts, int stride);
 
   // returns 1 if segment intersects polygon. returns optionally in ix,iy the closest intersection point
   // edge is the edge index in the polygon assuming they're consecutive (edge = start_vertex)
@@ -57,15 +68,4 @@ Sample in OpenGL provided, which depends on GLFW (included and also in https://g
 
   // computes axis aligned bounding box
   void cpoly_aabb(void* pts, int npts, int stride, float* xmin, float* ymin, float* xmax, float* ymax);
-
-  // calculates the bounding polygons for a set of circle points (x,y,radius)...using marching squares algorithm with no interpolation
-  // sqside is the side of the square
-  // returns number of polygons created. See NOTES for how to get the results.
-  int cpoly_marchingsq_nointerp(void* pts, int npts, int stride, float sqside);
-
-  // triangulate by Ear Clipping method
-  int cpoly_triangulate_EC(void* pts, int npts, int stride, void* reserved);
-
-  // Hertel-Mehlhorn partition algorithm. Produces 
-  int cpoly_partition_HM(void* pts, int npts, int stride);
 ``` 
