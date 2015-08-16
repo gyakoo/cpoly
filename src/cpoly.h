@@ -12,70 +12,79 @@ ALL functions where vertice order is important, it assumes Clock Wise ordering
 #ifdef _DEBUG
 #include <intrin.h>
 #endif
+#define CPOLY_IPOOL_0 0
+#define CPOLY_IPOOL_1 1
+#define CPOLY_IPOOL_2 2
+#define CPOLY_IPOOL_COUNT 3
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-  // Returns 0 if it's not convex. 1 for CW for CCW
+  int cpoly_init(int maxNoVertices, int maxNoIndices);
+
+  void cpoly_destroy();
+
+    // Returns 0 if it's not convex. 1 for CW for CCW
   int cpoly_is_convex(void* pts, int npts, int stride);
 
-  // Returns 1 if the point is inside a convex polygon
+    // Returns 1 if the point is inside a convex polygon
   int cpoly_cv_point_inside(void* pts, int npts, int stride, float x, float y);
 
-  // Return 1 if two convex polygons intersects (Separating Axis Theorem)
+    // Return 1 if two convex polygons intersects (Separating Axis Theorem)
   int cpoly_cv_intersects_SAT(void* pts0, int npts0, int stride0, void* pts1, int npts1, int stride1);
 
   // Return 1 if two segment a and b intersects  (optionally returns the intersection point)
   // 's' is the intersection fraction 0..1 from x0,y0 to x1,y1 when there's an intersection
   int cpoly_seg_isec(float x0, float y0, float x1, float y1, float x2, float y2, float x3, float y3, float* s);
 
-  // Return 1 if point x,y is inside the triangle given by x0,y0 .. x1,y1 .. x2,y2
+    // Return 1 if point x,y is inside the triangle given by x0,y0 .. x1,y1 .. x2,y2
   int cpoly_point_in_triangle(float x, float y, float x0, float y0, float x1, float y1, float x2, float y2);
 
   // returns 1 if segment intersects polygon. returns optionally in ix,iy the closest intersection point
   // edge is the edge index in the polygon assuming they're consecutive (edge = start_vertex)
   int cpoly_cv_seg_isec_poly_closest(float x0, float y0, float x1, float y1, void* pts, int npts, int stride, float* ix, float* iy, int* edge);
 
-  // returns 1 if segment intersects polygon and optionally the intersection point in ix/iy and the edge. First intersection found.
+    // returns 1 if segment intersects polygon and optionally the intersection point in ix/iy and the edge. First intersection found.
   int cpoly_cv_seg_isec_poly_first(float x0, float y0, float x1, float y1, void* pts, int npts, int stride, float* ix, float* iy, int* edge);
 
-  // Union of convex polygons. Returns no. of vertices to be accessed with cpoly_pool_get_vertex
-  // assumes: convex polygons, intersecting, no one inside another, no holes.
+    // Union of convex polygons. Returns no. of vertices to be accessed with cpoly_pool_get_vertex
+    // assumes: convex polygons, intersecting, no one inside another, no holes.
   int cpoly_cv_clip_union(void* pts0, int npts0, int stride0, void* pts1, int npts1, int stride1);
   
-  // Difference of convex polygons, returns no. of parts generated
-  // You got the parts offsets starting from part 1 in cpoly_pool_i indices
-  // All the vertices generated in cpoly_pool_v (See NOTES how to get results.)  
+    // Difference of convex polygons, returns no. of parts generated
+    // You got the parts offsets starting from part 1 in cpoly_pool_i indices
+    // All the vertices generated in cpoly_pool_v (See NOTES how to get results.)  
   int cpoly_cv_clip_diff(void* pts0, int npts0, int stride0, void* pts1, int npts1, int stride1);
 
-  // rotate around a pivot, NULL to rotate around center.
+    // rotate around a pivot, NULL to rotate around center.
   void cpoly_transform_rotate(void* pts, int npts, int stride, float angle, float* xpivot, float* ypivot);
 
-  // scale polygon points along a pivot or using center if NULL.
+    // scale polygon points along a pivot or using center if NULL.
   void cpoly_transform_scale(void* pts, int npts, int stride, float sx, float sy, float* xpivot, float* ypivot);
 
-  // translate center of polygon to x,y or the pivot if not null
+    // translate center of polygon to x,y or the pivot if not null
   void cpoly_transform_translate(void* pts, int npts, int stride, float x, float y, float* xpivot, float* ypivot);
 
-  // geometric center computation (center of mass or centroid)
+    // geometric center computation (center of mass or centroid)
   void cpoly_poly_centroid(void* pts, int npts, int stride, float* cx, float* cy);
 
-  // computes convex hull of a polygon. Returns no of indices to vertices in original polygon, use cpoly_pool_get_index.
-  // Gift wrapping algorithm
+    // computes convex hull of a polygon. Returns no of indices to vertices in original polygon, use cpoly_pool_get_index.
+    // Gift wrapping algorithm
   int cpoly_convex_hull(void* pts, int npts, int stride);
 
-  // computes axis aligned bounding box
+    // computes axis aligned bounding box
   void cpoly_aabb(void* pts, int npts, int stride, float* xmin, float* ymin, float* xmax, float* ymax);
 
-  // calculates the bounding polygons for a set of circle points (x,y,radius)...using marching squares algorithm with no interpolation
-  // sqside is the side of the square
-  // returns number of polygons created. See NOTES for how to get the results.
+    // calculates the bounding polygons for a set of circle points (x,y,radius)...using marching squares algorithm with no interpolation
+    // sqside is the side of the square
+    // returns number of polygons created. See NOTES for how to get the results.
   int cpoly_marchingsq_nointerp(void* pts, int npts, int stride, float sqside);
 
-  // triangulate by Ear Clipping method
+    // triangulate by Ear Clipping method
   int cpoly_triangulate_EC(void* pts, int npts, int stride, void* reserved);
 
-  // Hertel-Mehlhorn partition algorithm. Produces 
+    // Hertel-Mehlhorn partition algorithm. Produces 
   int cpoly_partition_HM(void* pts, int npts, int stride);
 
 
@@ -98,6 +107,20 @@ extern "C" {
     }
   */
 
+    // get vertex n coordinates from internal vertex pool
+  void  cpoly_pool_get_vertex(int n, float* x, float* y);
+
+    // get number of vertices in internal vertex pool
+  int   cpoly_pool_get_vcount();
+
+    // get index from internal index pool number ipool
+  int   cpoly_pool_get_index(int ipool, int n);
+
+  // get number of indices in index pool number ipool
+  int   cpoly_pool_get_icount(int ipool);
+
+    // get max number of index pools available
+  int   cpoly_pool_get_max_ipools();
 
 #ifdef __cplusplus
 };
@@ -157,16 +180,12 @@ typedef struct cpolyBitPool
 #define cpoly_setx(p,s,n,f) cpoly_getx(p,s,n)=f
 #define cpoly_sety(p,s,n,f) cpoly_gety(p,s,n)=f
 #define cpoly_setxy(p,s,n,x,y) { cpoly_setx(p,s,n,x); cpoly_sety(p,s,n,y); }
-#define CPOLY_IPOOL_0 0
-#define CPOLY_IPOOL_1 1
-#define CPOLY_IPOOL_2 2
-#define CPOLY_IPOOL_COUNT 3
 #define CPOLY_PI 3.141592f
 #define CPOLY_2PI (3.141592f*2.0f)
 // non thread safe shared pools (vertex and index)
-unsigned char cpoly_pool_v[CPOLY_MAXIPOOLSIZE_BYTES];
+unsigned char cpoly_pool_v[CPOLY_MAXPOOLSIZE_BYTES];
 const int CPOLY_POOL_VMAX = CPOLY_MAXPOOLSIZE_BYTES/(sizeof(float)*2); // max no of vertices (x,y) in the pool
-int cpoly_pool_vcount=0;
+unsigned int cpoly_pool_vcount=0;
 
 unsigned char cpoly_pool_i[CPOLY_IPOOL_COUNT][CPOLY_MAXIPOOLSIZE_BYTES];
 const int CPOLY_POOL_IMAX= CPOLY_MAXIPOOLSIZE_BYTES/sizeof(int); // max no of indices
@@ -180,8 +199,6 @@ int   cpoly_min(int a, int b);
 int   cpoly_clampi(int v, int m, int M);
 void  cpoly_pool_add_vertex(float x, float y);
 void  cpoly_pool_add_index(int ipool, int ndx);
-void  cpoly_pool_get_vertex(int n, float* x, float* y);
-int   cpoly_pool_get_index(int ipool, int n);
 void  cpoly_pool_set_index(int ipool, int at, int value);
 void  cpoly_bitset_create(cpolyBitPool* bs, int nbits);
 void  cpoly_bitset_destroy(cpolyBitPool* bs);
@@ -204,6 +221,15 @@ int   cpoly_is_inner_ray(void* pts, int npts, int stride, int i, int j);
 //////////////////////////////////////////////////////////////////////////
 // IMPLEMENTATION 
 //////////////////////////////////////////////////////////////////////////
+int cpoly_init(int maxNoVertices, int maxNoIndices)
+{
+  return 0;
+}
+
+void cpoly_destroy()
+{
+}
+
 
 // checks if all consecutive edges have same sign of the z component of their cross products
 // all negative => convex CW  (return 1)
@@ -461,6 +487,15 @@ void cpoly_pool_set_index(int ipool, int at, int value)
   int* ptr= (int*)( cpoly_pool_i[ipool]+at*sizeof(int));
   *ptr = value;
 }
+
+// get number of vertices in internal vertex pool
+int   cpoly_pool_get_vcount(){ return cpoly_pool_vcount; }
+
+// get number of indices in index pool number ipool
+int   cpoly_pool_get_icount(int ipool){ return cpoly_pool_icount[ipool]; }
+
+// get max number of index pools available
+int   cpoly_pool_get_max_ipools(){ return CPOLY_IPOOL_COUNT; }
 
 void cpoly_bitset_create(cpolyBitPool* bs, int nbits)
 {
@@ -1338,7 +1373,7 @@ int cpoly_HM_is_diag_essential(void* pts,int npts,int stride, cpolyDiag* diags,i
   int I = (v-1+npts)%npts;
   int F = (v+1)%npts;
   int last = 0;
-  int j,k;
+  int j;
   cpolyDiag* diag;
   float x0,y0,x1,y1,x2,y2,z;
 
